@@ -1,0 +1,41 @@
+#!/bin/tcsh
+
+#source the params file
+source $argv[1]
+
+#make atlas directory and go into it
+mkdir $session_free_path/atlas; pushd $session_free_path/atlas
+
+#convert nifti images into 4dfp
+@ mpr_count = 1; set mpr_list = ();
+foreach nii ( $raw_nii )
+	nifti_4dfp -4 $session_data_path/$nii ${session}_mpr${mpr_count}
+	set mpr_list = ( $mpr_list ${session}_mpr${mpr_count} )
+	@ mpr_count++
+end
+
+#average (if necessary) images and register to atlas
+avgmpr_4dfp $mpr_list ${session}_mpr_n{$#mpr_list} -T$atlas useold 
+
+#convert freesurfer images and move them to atlas
+cd ${session_free_path}/mri
+foreach image ( orig aseg aparc+aseg aparc.a2009s+aseg wmparc brainmask )
+	mri_convert ${image}.mgz ${image}.nii
+	nifti_4dfp -4 $image $image
+	rm ${image}.nii
+	mv *4dfp* ${session_free_path}/atlas
+end
+
+#register freesurfer images, convert/move them back to mri
+cd ${session_free_path}/atlas
+freesurfer2mpr_4dfp ${session}_mpr1 orig -T$atlas:t
+t4img_4dfp orig_to_CAPIIO_t4 orig orig_on_CAPIIO_111 -O111
+t4img_4dfp orig_to_CAPIIO_t4 brainmask brainmask_on_CAPIIO_111 -O111
+foreach image ( orig aseg aparc+aseg aparc.a2009s+aseg wmparc brainmask )
+	nifti_4dfp -n ${image}_on_CAPIIO_111 ${image}_on_CAPIIO_111 
+	gzip ${image}_on_CAPIIO_111.nii
+	mv ${image}_on_CAPIIO_111.nii.gz ${session_free_path}/mri
+end
+	
+
+exit

@@ -1,0 +1,295 @@
+#!/bin/tcsh
+
+#By Tyler Blazey Spring 2011
+#General script to process CAP DTI. Adapted from Avi's generic DWI script.
+#Mode of anisotropy calculation code taken from Saad Jbabdi's FSL Mailing list post:
+#https://www.jiscmail.ac.uk/cgi-bin/webadmin?A2=FSL;a7a2eb7.1103
+
+set echo
+
+#check to make sure a params file is used and that it exists
+if ( $#argv == 0 ) then
+	echo "This script requires a params file"
+	exit
+endif
+if ( ! -e $argv[1] ) then
+	echo "Cannot find $argv[1]."
+	exit
+endif
+
+#source the params file
+source $argv[1]
+
+#Set the output order for the diff_4dfp stack
+set proc_list = ( MD RA FA L3 L2 L1 RD RES )
+
+#set FSL output type to nifti
+setenv FSLOUTPUTTYPE NIFTI
+
+#check to see if the bmax equals 1400 or 1000
+if ( $bmax != "1000" && $bmax != "1400" ) then
+	echo "This script only processes data with a bmax of 1000 or 1400, not $bmax. Exiting..."
+	echo "Error: $bvols $bmax $bmin" > ${session_path}/error.txt
+	exit
+endif
+
+#make and then go into Processing directories
+mkdir $session_path/Processing; cd $session_path/Processing;
+
+#copy over dti images
+@ count = 1
+while ( $count <= $#dti )
+	imcp ../data/$dti[$count] ${session}_dti_${count}
+	@ count++
+end
+
+#if t1 images exist, copy over t1 and t2 images
+if ( $?t1 == 1 ) then
+	@ count = 1
+	while ( $count <= $#t1 )
+		imcp ../data/$t1[$count] ${session}_t1_${count}
+		@ count++
+	end
+	imcp ../data/$t2 ${session}_t2
+endif
+
+#Check to see if we have to remove volumes in order to prepare it for processing.
+#Possibiles that code can handle 25 + b0, 25 - b0, 24 + b0, 24 - b0, 23 + b0, and 23 - b0.
+#Will output either 23 + b0 or 23 - b0, depending on whether or not b0 is present.
+switch ( $bvols )
+	#two possibilites, 26 - b0 or 25 + b0
+	case 26:
+		#25 + b0. So we have to remove both vectors 9 and 21. This corresponds to volumes 
+		#10 and 22 in FSLland.
+		if ( $bmin == 0 ) then
+			foreach dti ( ${session}_dti_[0-9].nii )
+				fslroi $dti ${dti:r}_0_to_9 0 10
+				fslroi $dti ${dti:r}_11_to_21 11 11
+				fslroi $dti ${dti:r}_23_to_25 23 3
+				fslmerge -t ${dti:r}_23_plus_b0 ${dti:r}_0_to_9 ${dti:r}_11_to_21 \
+				${dti:r}_23_to_25
+			end
+		else
+			echo "This script does not know how to process 26 volumes with a bmin of 0. Exiting..."
+			echo "Error: $bvols $bmax $bmin" > ${session_path}/error.txt
+			exit
+		endif
+		breaksw;
+	#two possibilites, 24 + b0 or 25 - b0.
+	case 25:
+		#24 + b0. This code will assume that vector 9 has already been removed. That means
+		#That vector[21] has to be removed. Since it is now vector[20], and we have a b0,
+		#we have to get rid of volume 21 in FSLland.
+		if ( $bmin == 0 ) then
+			foreach dti ( ${session}_dti_[0-9].nii )
+				fslroi $dti ${dti:r}_0_to_20 0 21
+				fslroi $dti ${dti:r}_22_to_24 22 3
+				fslmerge -t ${dti:r}_23_plus_b0 ${dti:r}_0_to_20 ${dti:r}_22_to_24
+			end
+		#25 - b0. We have to remove vectors 9 and 21, however this time we don't have a b0. 
+		#This means that we now have to get rid of volumes 9 and 21 in FSLland.
+		else
+			foreach dti ( ${session}_dti_[0-9].nii )
+				fslroi $dti ${dti:r}_0_to_8 0 9
+				fslroi $dti ${dti:r}_10_to_20 10 11
+				fslroi $dti ${dti:r}_22_to_24 22 3
+				fslmerge -t ${dti:r}_23_minus_b0 ${dti:r}_0_to_8 ${dti:r}_10_to_20 \
+				${dti:r}_22_to_24
+			end
+		endif
+		breaksw
+	#two possibilites, 24 - b0 and 23 + b0.
+	case 24:
+		#23 + b0. In this case, no volumes have to be removed. We just have to rename the files
+		#So they equal what the script expects in later stages
+		if ( $bmin == 0 ) then
+			foreach dti ( ${session}_dti_[0-9].nii )
+				imcp $dti ${dti:r}_23_plus_b0
+			end
+		#24 - b0. Again, it is assumed that vector 9 has already been removed. Therefore, we have 
+		#to remove vector[21], now vector[20]. Without a b0, this equals volume 20 in FSLland.
+		else
+			foreach dti ( ${session}_dti_[0-9].nii )
+				fslroi $dti ${dti:r}_0_to_19 0 20
+				fslroi $dti ${dti:r}_21_to_23 21 3
+				fslmerge -t ${dti:r}_23_minus_b0 ${dti:r}_0_to_19 ${dti:r}_21_to_23
+			end
+		endif
+		breaksw
+	#two possibilites, 23 - b0 and 22 + b0
+	case 23:
+		if ( $bmin == 0 ) then
+			echo "This script does not know how to process 23 volumes with a bmin of 0. Exiting..."
+			echo "Error: $bvols $bmax $bmin" > ${session_path}/error.txt
+			exit
+		#23 - b0. No volumes need to be removed here. Just rename the files.
+		else
+			foreach dti ( ${session}_dti_[0-9].nii )
+				imcp $dti ${dti:r}_23_minus_b0
+			end
+		endif
+	default:
+		echo \
+		"This script does not know how to process $bvols volumes with a bmin of $bmin. Exiting..."
+		echo "Error: $bvols $bmax $bmin" > ${session_path}/error.txt
+		exit
+		breaksw
+endsw
+
+#setup the DiffVec file to use and the group string
+if ( $bmin == 0 ) then
+	set diffvec = "~/scripts/DiffVec_${bmax}_23dirplusB0.prm"
+	set group_string = "-g2,7,11,16 -g3,8,21 -g4,12,17 -g5,9,10,13,14,18,22 -g6,15,19,20,23,24"
+else
+	set diffvec = "~/scripts/DiffVec_${bmax}_23dirnoB0.prm"
+	set group_string = "-g6,10,15 -g2,7,20 -g3,11,16 -g4,8,9,12,13,17,21 -g5,14,18,19,22,23"
+endif
+
+#process each dti sequence
+foreach nii ( ${session}_dti*_b0.nii )
+	#make a very generous mask
+	bet $nii ${nii:r}_brain -R -m -f .1
+	#convert mask and dti to 4dfp
+	nifti_4dfp -4 $nii ${nii:r}; nifti_4dfp -4 ${nii:r}_brain_mask ${nii:r}_brain_mask
+	#align each dti using bet mask
+	dwi_xalign3d_4dfp -sm $group_string ${nii:r} ${nii:r}_brain_mask | tee ${nii:r}_xalign3d.log
+	#Add the dti center and mmpix to the geom file. 
+	#Without this, transforms will not be applied correctly
+	tail -2  ${nii:r}.4dfp.ifh >> ${nii:r}_geom.4dfp.ifh 
+end
+
+#cross align both sequences using first bet mask
+dwi_cross_xalign3d_4dfp -g -m${session}_dti_1*b0_brain_mask.4dfp.img ${session}_dti_?_*b0.4dfp.img \
+${session}_dti | tee ${session}_dti_cross_xalign3d.log
+#Add the center and mmpix of the first dti to xenc
+tail -2 ${session}_dti_1*b0.4dfp.ifh >> ${session}_dti_xenc.4dfp.ifh
+
+#Apply first bet brain mask to dwi_xenc
+maskimg_4dfp -1 ${session}_dti_xenc ${session}_dti_1*b0_brain_mask.4dfp.img \
+${session}_dti_xenc_masked
+
+#process in atlas space
+if ( $?t1 == 1 ) then
+	
+	#convert t1 to 4dfp and add to mpr list
+	set mpr_list = ()
+	foreach nii ( ${session}_t1_[0-9].nii )		
+		#Get the T1 brain:
+		#Brain extract the T1 using generous BET threshold
+		bet $nii ${nii:r}_brain -R -f .4
+		#convert brain image to 4dfp, and add to list to atlas/average.
+		nifti_4dfp -4 ${nii:r}_brain ${nii:r}_brain
+		set mpr_list = ( $mpr_list ${nii:r}_brain )
+	end
+	
+	#average brain extracted mprages and transform to atlas space
+	avgmpr_4dfp $mpr_list ${session}_t1_brain_n${#mpr_list} -T$atlas useold
+	
+	#Brain extract the T2 with a generous threshold
+	bet ${session}_t2 ${session}_t2_brain -R -m -f .4
+	
+	#convert T2 brain and brain mask to 4dfp
+	nifti_4dfp -4 ${session}_t2_brain ${session}_t2_brain
+	nifti_4dfp -4 ${session}_t2_brain_mask ${session}_t2_brain_mask
+	
+	#register T2 to MPRAGE
+	t2w2mpr_4dfp ${session}_t1_1_brain ${session}_t2_brain -T$atlas | tee \
+	${session}_t2_brain_to_${session}_t1_1_brain.log
+	
+	#register dwi1 to t2
+	#setup modes for registration
+	set modes = (0 0 0 0 0)
+	@ modes[1] = 4096 + 3 	#only translation
+	@ modes[2] = 3072 + 3
+	@ modes[3] = 2048 + 3	#fine mode
+	@ modes[4] = 2048 + 3 + 4	#fine mode with 12 degrees of freedom
+	@ modes[5] = 2048 + 3 + 4	#fine mode one more time
+	
+	#extract first frame
+	set dti1 = `ls ${session}_dti_1*_b0.4dfp.img`
+	extract_frame_4dfp $dti1 1
+	
+	#loop through each mode to get registration from b0 to t2
+	set t4file = ${dti1:r:r}_frame1_to_${session}_t2_brain_t4
+	@ count = 1
+	while ($count <= ${#modes})
+		echo imgreg_4dfp ${session}_t2_brain ${session}_t2_brain_mask ${dti1:r:r}_frame1 \
+		${dti1:r:r}_brain_mask $t4file $modes[$count] >> \
+		${dti1:r:r}_frame1_to_${session}_t2_brain.log
+		imgreg_4dfp ${session}_t2_brain ${session}_t2_brain_mask ${dti1:r:r}_frame1 \
+		${dti1:r:r}_brain_mask $t4file $modes[$count] | tee -a \
+		${dti1:r:r}_frame1_to_${session}_t2_brain.log		
+		@ count++
+	end
+		
+	#multiply dti1 to t2 by t2 to atlas to get dti1 to atlas
+	t4_mul $t4file ${session}_t2_brain_to_${atlas:t}_t4
+	
+	#output aligned images in atlas space
+	t4img_4dfp ${dti1:r:r}_frame1_to_${atlas:t}_t4 ${session}_dti_xenc_masked \
+	${session}_dti_xenc_masked_on_${atlas:t}_111 -O${session}_t2_brain_t88_111
+												   
+	#run diff4dfp on atlas images
+	diff_4dfp -E -Z -B2 -F -R -atensor $diffvec ${session}_dti_xenc_masked_on_${atlas:t}_111
+	
+	#extract atlas space processed image from 4dfp stack
+	@ count = 1
+	while ( $count <= ${#proc_list} )
+		extract_frame_4dfp ${session}_dti_xenc_masked_on_${atlas:t}_111_tensor_dti $count \
+		-o${session}_dti_xenc_masked_on_${atlas:t}_111_$proc_list[$count]	
+		@ count++
+	end
+
+endif
+
+#run tensor fit in native space
+diff_4dfp -E -Z -B2 -F -R -atensor $diffvec ${session}_dti_xenc_masked
+	
+#extract processed DTI images in native space from 4d stack
+@ count = 1
+while ( $count <= ${#proc_list} )
+	extract_frame_4dfp ${session}_dti_xenc_masked_tensor_dti $count \
+	-o${session}_dti_xenc_masked_$proc_list[$count]		
+	@ count++
+end
+
+#clean up
+rm *222_t88.4dfp* *333_t88.4dfp* *t88_222.4dfp* *t88_333.4dfp* *tensor* *img_to_atlas_t4 \
+*dti_[0-9]_*_to_*.nii
+
+
+#convert all 4dfp images to nifti
+foreach image ( *.4dfp.img )	
+	#only convert if nii file does not already exist
+	if ( ! -e ${image:r:r}.nii ) nifti_4dfp -n $image $image:r:r;
+	#delete 4dfp image unless user has specified otherwise. Specify extensiosn so that .dat files
+	#do not get deleted
+	if ( $keep != 1 ) rm ${image:r}.ifh ${image:r}.hdr ${image:r}.img ${image:r}.img.rec
+end
+
+#Calculate the mode of anisotropy. 
+foreach root ( *FA.nii )
+	#get the root for each processed dti
+	set root = `echo $root:r | sed 's/.\{3\}$//'`
+	#use fslmaths to calculate the mode
+	fslmaths ${root}_L1 -sub ${root}_MD tmpE1
+    fslmaths ${root}_L2 -sub ${root}_MD tmpE2
+    fslmaths ${root}_L3 -sub ${root}_MD tmpE3
+    fslmaths tmpE3 -mul -2 -add tmpE1 -add tmpE2 tmpN1 
+    fslmaths tmpE1 -mul -2 -add tmpE2 -add tmpE3 tmpN2 
+    fslmaths tmpE2 -mul -2 -add tmpE1 -add tmpE3 tmpN3 
+    fslmaths tmpN1 -mul tmpN2 -mul tmpN3 -mul -1 tmpN
+    fslmaths tmpE1 -sub tmpE2 -sub tmpE3 -mul tmpE1 tmpD
+    fslmaths tmpE2 -sub tmpE3 -mul tmpE2 -add tmpD tmpD
+    fslmaths tmpE3 -mul tmpE3 -add tmpD
+    fslmaths tmpD -thr 0 -sqrt tmpD
+    fslmaths tmpD -mul tmpD -mul tmpD -mul 2 tmpD
+    fslmaths tmpN -div tmpD -max -1 -min 1 ${root}_MO
+end
+
+#remove mode calc temp files
+rm tmp*
+
+#gzip all the nifti files
+gzip *.nii
+

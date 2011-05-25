@@ -1,0 +1,310 @@
+#!/bin/tcsh
+
+# Don't match wildcards in variables...
+set nonomatch
+
+#usage
+if ( $#argv == 0 ) then
+	echo ""
+	echo "ArcCheck: Takes the output of ArcRead and outs names of specified quality for ArcGet"
+	echo ""
+	echo "Arguments:"
+	echo "	-f: Text file produced from ArcRead"
+	echo "	-s: Sequences to search for. Takes T1, T2, DTI, and BOLD. Use multiple tags."
+	echo "	-q: Allow questionable scans. Default is to take only usable."
+	echo "	-u: Out a unpacksdicomdir sequence file for present scans."
+	echo "	-ut: Unpacksdicomdir output type. Default is to just copy DICOM files"
+	echo "	-r: Add -r after each sequence name in output. Useful for ArcGet."
+	echo "  -a: Return a string which indicates the availablity of each -s tag instead of sequence name"
+	echo ""
+	exit
+endif
+
+#set globals
+set image_array = (); set name_array = (); set sequences = "T1 T2 DTI BOLD"; set run_array = ();
+set outs = "DICOM NIFTI COR bshort MINC SPM ANALYZE NII MGH MGZ"
+
+#parse arguments
+while ( $#argv > 0 )
+	set flag = $argv[1]; shift;
+	switch ( $flag )
+		case -f:
+			#check if file exists
+			if ( ! -e $argv[1] ) then
+				echo "Could not find $argv[1]"
+				exit
+			endif
+			set readfile = $argv[1]; shift; breaksw;
+		case -s:
+			#check if -s option is known
+			echo $sequences | grep -q $argv[1]
+			if ( $? == 1 ) then
+				echo "Unknown -s option $argv[1]. See usage."
+				exit
+			endif
+			set image_array = ( $image_array $argv[1] ); shift; breaksw;		
+		case -q:
+			set quality = 1; breaksw;
+		case -u:
+			set unpacks = 1; breaksw;
+		case -r:
+			set arcflag = 1; breaksw;
+		case -ut:
+			#check if -ut option is known
+			echo $outs | grep -q $argv[1]
+			if ( $? == 1 ) then
+				echo "Unknown -ut option $argv[1]. See usage."
+				exit
+			endif
+			set unpacks_out = $argv[1]; shift; breaksw;
+		case -a:
+			set avail_string = (); breaksw;
+		default:
+			echo "Option $flag not recognized. See usage."
+			exit
+	endsw
+end
+
+#If user does not set unpacks_out, set it to DICOM.
+if ( $?unpacks_out == 0 && $?unpacks == 1 ) set unpacks_out = "DICOM"
+
+#loop through each image in image array and check to see if scan of specified quality is present
+foreach scan ($image_array)
+	switch ($scan)
+		case T1:
+			if ( $?avail_string == 1 ) then
+				set avail_string = ( $avail_string "T1:Yes" )
+			endif
+			#Setup search strings
+			if ( $?quality == 1 ) then
+				set t1_search = "t1_mpr_1mm_p2_pos50...usable\|t1_mpr_1mm_p2_pos50...questionable"
+				set mp_search = "MPRAGE...usable\|MPRAGE...questionable"
+			else
+				set t1_search = "t1_mpr_1mm_p2_pos50...usable"
+				set mp_search = "MPRAGE...usable"
+			endif
+			
+			#Use search strings to figure out name for T1
+			set g_result = `grep -i $t1_search $readfile`
+			if ( $? == 1 ) then
+				set g_result = `grep -i $mp_search $readfile`
+				if ( $? == 1 ) then
+					set name_array = ( $name_array ) #no T1 available
+					if ( $?avail_string == 1 ) then
+						set avail_string = ( $avail_string "T1:No" )
+					endif
+				else
+					set name_array = ( $name_array "MPRAGE" )
+				endif
+			else
+				set name_array = ( $name_array "t1_mpr_1mm_p2_pos50" )
+			endif
+			
+			#if user wanted, figure out run numbers
+			if ( $?unpacks == 1 ) then
+				@ count  = 1
+				while ( $count <= $#g_result )
+					set run_array = ( $run_array $g_result[$count] "t1" )
+					@ count = $count + 3 
+				end
+			endif
+			
+			breaksw
+		
+		case T2:
+			
+			if ( $?avail_string == 1 ) then
+				set avail_string = ( $avail_string "T2:Yes" )
+			endif
+			
+			#Setup search strings
+			if ( $?quality == 1 ) then
+				set threed_search = "3DT2...usable\|3DT2...questionable"
+				set t2_search = "t2_spc_1mm_p2...usable\|t2_spc_1mm_p2...questionable"
+			else
+				set threed_search = "3DT2...usable"
+				set t2_search = "t2_spc_1mm_p2...usable"
+			endif
+			
+			#Use search strings to figure out name for T2
+			set g_result = `grep -i $threed_search $readfile`
+			if ( $? == 1 ) then
+				set g_result = `grep -i $t2_search $readfile`
+				if ( $? == 1 ) then
+					set name_array = ( $name_array ) #no T2 available
+					if ( $?avail_string == 1 ) then
+						set avail_string = ( $avail_string "T2:No" )
+					endif
+				else
+					set name_array = ( $name_array "t2_spc_1mm_p2" )
+				endif
+			else
+				set name_array = ( $name_array "3DT2" )
+			endif
+			
+			#if user wanted, figure out run numbers
+			if ( $?unpacks == 1 ) then
+				@ count  = 1
+				while ( $count <= $#g_result )
+					set run_array = ( $run_array $g_result[$count] "t2" )
+					@ count = $count + 3 
+				end
+			endif
+			
+			breaksw
+	
+		case BOLD:
+			
+			if ( $?avail_string == 1 ) then
+				set avail_string = ( $avail_string "BOLD:Yes" )
+			endif
+			
+			#Setup search strings
+			if ( $?quality == 1 ) then
+				set bold_search = "BOLD...usable\|BOLD...questionable"
+				set connect_search = "ep2d_bold_connect...usable\|ep2d_bold_connect...questionable"
+			else
+				set bold_search = "BOLD...usable"
+				set connect_search = "ep2d_bold_connect...usable"
+			endif
+			
+			#use search strings to figure out name for BOLD
+			set g_result = `grep -i $bold_search $readfile | grep -vi "Test"`
+			if ( $? == 1 ) then
+				set g_result = `grep -i $connect_search $readfile`
+				if ( $? == 1 ) then
+					set name_array = ( $name_array ) #no BOLD available
+					if ( $?avail_string == 1 ) then
+						set avail_string = ( $avail_string "BOLD:No" )
+					endif
+				else
+					set name_array = ( $name_array "ep2d_bold_connect" )
+				endif
+			else
+				set name_array = ( $name_array "BOLD" )
+			endif
+			
+			#if user wanted, figure out run numbers
+			if ( $?unpacks == 1 ) then
+				@ count  = 1
+				while ( $count <= $#g_result )
+					set run_array = ( $run_array $g_result[$count] "bold" )
+					@ count = $count + 3 
+				end
+			endif
+			
+			breaksw
+	
+		case DTI:
+			
+			if ( $?avail_string == 1 ) then
+				set avail_string = ( $avail_string "DTI:Yes" )
+			endif
+			
+			#Setup search strings
+			if ( $?quality == 1 ) then
+				set dti_search = "DTI...usable\|DTI...questionable"
+				set dif_search = "dif...usable\|dif...questionable"
+				set t5_search = "ep2d_dif.*25dir.*av....usable\|ep2d_dif.*25dir.*av....questionable"
+				set t3_search = "ep2d_diff_23d_MDDW...usable\|ep2d_diff_23d_MDDW...questionable"		
+			else
+				set dti_search = "DTI...usable"
+				set dif_search = "dif...usable"
+				set t5_search = "ep2d_dif.*25dir.*av....usable"
+				set t3_search = "ep2d_diff_23d_MDDW...usable"
+			endif
+			
+			#Use search strings to find name of DTI sequences
+			set g_result = `grep -i $dti_search $readfile`
+			if ( $? == 1 ) then
+				set g_result = `grep -i $t5_search $readfile`
+				if ( $? == 1 ) then
+					set g_result = `grep -i $t3_search $readfile`
+					if ( $? == 1 ) then
+						set g_result = `grep -i $dif_search $readfile`
+						if ( $? == 1 ) then
+							set name_array = ( $name_array ) #no dti available
+							if ( $?avail_string == 1 ) then
+								set avail_string = ( $avail_string "DTI:No" )
+							endif
+						else
+							set name_array = ( $name_array "dif")
+						endif						
+					else
+						set name_array = ( $name_array "ep2d_diff_23d_MDDW" )
+					endif
+				else			
+					set dti_number = `grep -ic $t5_search $readfile`
+					set only_seq = "ep2d_dif.*25dir.*av."
+					if ( $dti_number == 1 ) then
+						set name_array = ( $name_array \
+						`grep -iom1 $t5_search $readfile | grep -io $only_seq | sed 's/ /+/g'` )
+					else if ( $dti_number == 2 ) then
+						set name_array = ( $name_array \
+						`grep -iom1 $t5_search $readfile | grep -io $only_seq | sed 's/ /+/g'` \
+						`grep -iom2 $t5_search $readfile | tail -1 | grep -io $only_seq | \
+						sed 's/ /+/g'` )
+					else
+						set name_array = ( $name_array ) #shouldn't go here....
+					endif
+				endif
+			else
+				set name_array = ( $name_array "DTI" )
+			endif
+			
+			#if user wanted, figure out run numbers
+			if ( $?unpacks == 1 ) then
+				if ( $?dti_number == 1 ) then
+					@ add = $#g_result / $dti_number;
+				else
+					@ dti_number = $#g_result / 3;  @ add = 3; 
+				endif
+				@ count = 1; @ run_number = 1
+				while ( $count <= $dti_number )
+					#only include non-processed sequences in unpacking file.
+					#Sed is needed to avoid a divide by 0 error
+					set fov = `grep -A4 "SCAN NUMBER: $g_result[$run_number]" $readfile | tail -1 \
+					| sed 's/\//by/g'`
+					if ( $fov[3] == "1008by1008" || $fov[3] == "768by768" ) then
+						set run_array = ( $run_array $g_result[$run_number] "dti" )
+					endif
+					@ run_number = $run_number + $add
+					@ count++
+				end
+			endif
+		
+		breaksw
+	endsw
+end
+
+#if user wants, add -r before each sequence.
+if ( $?arcflag == 1 ) then
+	set flag_array = ()
+	foreach sequence ( $name_array )
+		set flag_array = ( $flag_array "-r $sequence" )
+	end
+	set name_array = ( $flag_array )
+endif
+
+#report names of sequences for ArcGet
+if ( $?avail_string == 1 ) then
+	echo $avail_string
+else
+	echo $name_array
+endif
+
+#output unpacks file if user wanted. Uses the following format:- RunNumber Subdir Format Name
+#See unpacksdicomdir for more info...
+if ( $?unpacks == 1 ) then
+	@ count = 1; @ runs = $#run_array / 2; @ seq = 1;
+	while ( $count <= $runs )
+		@ second = $seq + 1;
+		if ( $count == 1 ) then
+			echo "$run_array[$seq] ${run_array[$second]} $unpacks_out ${run_array[$second]}0${run_array[$seq]}.$unpacks_out" > unpacks_config.txt
+		else
+			echo "$run_array[$seq] ${run_array[$second]} $unpacks_out ${run_array[$second]}0${run_array[$seq]}.$unpacks_out" >> unpacks_config.txt
+		endif
+		@ count ++; @ seq = $seq + 2;
+	end
+endif
+

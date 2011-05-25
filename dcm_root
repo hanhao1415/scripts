@@ -1,0 +1,91 @@
+#!/bin/tcsh
+#dcm_root - Returns the common root string between two file types. Can either specify two strings, or it will look in a specified directory.
+set nonomatch
+set avi_root = 0
+#Parse user inputs....
+
+if ($#argv == 0) then
+	echo "Usage: dcm_root -i string1 string2 OR dcm_root -d directory -a return avi style root (does not accept . as last character)"
+	exit
+endif
+
+while ($#argv > 0) 
+	switch ($argv[1])
+		case -i:
+			shift argv
+			set file1 = $argv[1]
+			set file2 = $argv[2]
+			shift argv
+			shift argv
+			breaksw
+		case -d:
+			shift argv
+			set image_path = $argv[1]
+			#Thanks to dcm_sort for this...
+			if (`echo $image_path | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."&&substr($0,1,1)!="~")print "1"}'` == 1) then
+				set image_path = ${cwd}/${image_path}
+			else if (`echo $image_path | awk '{if(substr($0,1,1)==".")print "1"}'` == 1) then
+				set image_path = $cwd
+			endif
+			set file1_path = `ls ${image_path}/*.dcm ${image_path}/*.IMA ${image_path}/*.ima | head -1`
+			set file2_path = `ls ${image_path}/*.dcm ${image_path}/*.IMA ${image_path}/*.ima | tail -1`
+			set file1 = $file1_path:t
+			set file2 = $file2_path:t
+			shift argv
+			breaksw
+		case -a
+			shift argv
+			set avi_root = 1
+			breaksw
+		default:
+			echo "Usage: dcm_root -i string1 string2 OR dcm_root -d directory"
+			exit
+	endsw
+end
+
+
+#get length of strings
+set file1_length = `echo $file1 | awk '{print length($0)}'`
+set file2_length = `echo $file2 | awk '{print length($0)}'`
+
+# determine which string to use a loop limit
+if ($file1_length > $file2_length) then
+	@ limit = $file2_length
+	set final_string = $file2
+else
+	@ limit = $file1_length
+	set final_string = $file1
+endif
+
+#split strings into arrays
+set file1_array = `echo $file1 | awk 'BEGIN{FS=""}{for (i=1; i<=NF; i++) print $i}'`
+set file2_array = `echo $file2 | awk 'BEGIN{FS=""}{for (i=1; i<=NF; i++) print $i}'`
+
+#loop through character arrays until you no longer have a matching character
+@ count = 1
+while ($count <= $limit)
+	if ($file1_array[$count] == $file2_array[$count]) then
+		@ length = $count
+		@ count++
+	else 
+		if ($count == 1) then
+			echo "Could not find a common root for ${file1} and ${file2}"
+			exit 
+		endif
+		@ length = $count - 1
+		break
+	endif
+end
+
+# set room equal the length of matching characters
+set root = `echo $final_string | cut -c1-${length}`
+
+#remove the last character if it is a dot and avi root option is used
+if ($avi_root == 1) then
+	set last_root = `echo -n $root | tail -c -1`
+	if ($last_root == ".") then
+		set root = `echo $root | sed 's/.$//'`
+	endif
+endif
+
+echo $root

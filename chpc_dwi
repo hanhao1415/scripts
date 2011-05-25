@@ -1,0 +1,225 @@
+#!/bin/tcsh
+
+#By Tyler Blazey Spring 2011
+
+# Don't match wildcards in variables...
+set nonomatch
+
+#usage
+if ( $#argv == 0 ) then
+	echo ""
+	echo "chpc_dwi: A basic wrapper to process DWI sessions on the CHPC Supercomputer"
+	echo ""
+	echo "Usage:"
+	echo ""
+	echo "Required Arguments:"
+	echo "	-u: CNDA username"
+	echo "	-p: CNDA password"
+	echo "	-s: CNDA Session OR -f Text file with CNDA sessions"
+	echo "	-o: output Directory"
+	echo ""
+	echo "Optional Arguments:"
+	echo "	-atlasreg: Turn on registration to atlas space"
+	echo "	-atlas: Specify atlas other than CAPIIO."
+	echo "	-quest: Allow questionable scans."
+	echo "	-email: User email address for batch reporting"
+	echo "	-keep: Keep 4dfp images. Default is to delete."
+	echo ""
+	echo "Dependencies:"
+	echo " 	1. xnat_tools, dcm2nii, FreeSurfer, and FSL in path."
+	echo "	2. 4dfp atlas images in ~/atlas"
+	echo "	3. dwi_proc in ~/scripts"
+	echo ""
+	exit
+endif
+
+#set globals
+set sessions = (); set qsubarray = (); set my_status = 0;
+
+#parse arguments
+while ( $#argv > 0 ) 
+	set flag = $argv[1]; shift;
+	switch ( $flag )
+		case -u:
+			set username = $argv[1]; shift; breaksw;
+		case -p:
+			set pass = $argv[1]; shift; breaksw;
+		case -s:
+			set sessions = ( $sessions $argv[1] ); shift; breaksw;
+		case -f:
+			#check if fill exists. If it does not, exit.
+			if ( ! -e $argv[1] ) then
+				"Error: Could not find $argv[1]"
+				exit
+			endif
+			set sessions = ( $sessions `cat $argv[1]` ); shift; breaksw;
+		case -o:
+			set outdir = $argv[1]
+			#If user does not give a path, assume current working directory.
+			#Thanks to dcm_sort for this...
+			if (`echo $outdir | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."&&substr($0,1,1) \
+			!="~")print "1"}'` == 1) then
+				set outdir = ${cwd}/${outdir}
+			endif
+			shift; breaksw;
+		case -atlasreg:
+			set sequences = "-s T1 -s T2 -s DTI"; set atlasreg = 1; breaksw;
+		case -atlas:
+			set atlas = $argv[1]; shift; breaksw;
+		case -email:
+			set email = "-M $argv[1]"; shift; breaksw;
+		case -quest:
+			set quest = "-q"; set quality_string = "usable,questionable"; breaksw;
+		case -keep:
+			set keep = 1; breaksw;
+		default:
+			echo "Option $flag not recognized. See usage."
+			exit
+	endsw
+end
+
+#check to make sure all required options have been set
+if ( $?username == 0 || $?pass == 0 || $#sessions == 0  || $?outdir == 0 ) then
+	echo "Missing required arguments. See usage"
+	exit
+endif
+
+#set defaults
+if ( $?atlas == 0 ) set atlas = "CAPIIO"
+if ( $?email == 0 ) set email = ""
+if ( $?sequences == 0 ) set sequences = "-s DTI"
+if ( $?quest == 0 ) then
+	set quest = ""; set quality_string = "usable";
+endif
+if ( $?keep == 0 ) set keep = 0;
+
+
+#make outdir directory if it does not exist
+if ( ! -d $outdir ) mkdir $outdir
+
+#setup each each sessions
+foreach session ( $sessions )
+	
+	#make directories and such
+	set session_path = "$outdir/$session"
+	mkdir $session_path $session_path/temp $session_path/RAW
+	
+	#run ArcRead to get a list of the scans for the current sessions
+	ArcRead -u $username -p $pass -host https://cnda.wustl.edu -s $session -o $session_path/temp	
+	cd $session_path/temp
+	set readfile = `ls *.txt | head -1`
+	
+	#check to see if ArcRead produced a readable outdir
+	if ( $? == 1 ) then
+		echo "Error using ArcRead for $session."
+		echo $session >> $outdir/skipped.log; 
+		set my_status = 1; continue;
+	endif
+	
+	#run ArcCheck twice. Once to get sequence names, again to get status of sequences.
+	set arc_string = `ArcCheck -f $readfile $sequences -u -r $quest`
+	set arc_string_check = `ArcCheck -f $readfile $sequences -u -r $quest -a`
+	
+	#check to make sure all sequences are usable
+	echo $arc_string_check | grep -qi "No" 
+	if ( $? == 0 ) then
+		echo "$session does not have all needed usable sequences."
+		echo $session >> $outdir/skipped.log; 
+		set my_status = 1; continue;
+	endif
+		
+	#Download files with ArcGet
+	ArcGet -u $username -p $pass -host https://cnda.wustl.edu -s $session -o $session_path/temp \
+	$arc_string -z true -di -quality $quality_string
+	
+	#Move files and then clean up.
+	find ./ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) -exec mv {} ../RAW \;
+	mv unpacks_config.txt ../; cd ../; rm -R temp
+	
+	#Run unpacksdicomdir on RAW using configuration file produced by ArcCheck
+	unpacksdcmdir -src RAW -targ data -cfg unpacks_config.txt -generic
+	if ( $? == 1 ) then
+		echo "Error using unpacksdcmdir for $session."
+		echo $session >> $outdir/skipped.log; 
+		set my_status = 1; continue;
+	endif
+	rm -R RAW
+	
+	#Convert RAW files to nifti. 
+	pushd data
+	foreach folder ( * )
+		if ( -d $folder ) then
+			#Do not reorient
+			dcm2nii -g n $folder/*
+			#get bmin, bmax, and number of volumes
+			if ( $folder == "dti" ) then
+				set dti = `ls $folder/*.nii`; set bval_file = `ls $folder/*.bval | head -1`;
+				set bvols = `fslval $dti[1] dim4`; set bmin = "100000"; set bmax = "";
+				foreach bval ( `cat $bval_file` )
+					if ( $bval > $bmax ) set bmax = $bval;
+					if ( $bval < $bmin ) set bmin = $bval;
+				end
+			endif
+			if ( $folder == "t1" ) set t1 = `ls $folder/o*.nii`
+			if ( $folder == "t2" ) set t2 = `ls $folder/o*.nii`
+		endif
+	end
+	popd
+	
+	#create the params file
+	echo "#General Params for DTI" > $session.params
+	echo "set session = $session" >> $session.params
+	echo "set session_path = '$session_path'" >> ${session}.params
+	echo "set dti = ( $dti )" >> ${session}.params
+	echo "set bmin = $bmin" >> ${session}.params
+	echo "set bmax = $bmax" >> ${session}.params
+	echo "set bvols = $bvols" >> ${session}.params
+	echo "set keep = $keep" >> ${session}.params
+	if ( $?atlasreg == 1 ) then
+		echo "#Params for atlas registration" >> $session.params
+		echo "set t1 = ( $t1 )" >> ${session}.params
+		echo "set t2 = ( $t2 )" >> ${session}.params
+		echo "set atlas = '~/atlas/$atlas'" >> ${session}.params
+	endif
+	
+	#create the batch file
+	echo "#PBS -N ${session}_dti -l nodes=1:ppn=1:idataplex,walltime=04:00:00 -q dque $email" \
+	> ${session}.batch
+	echo "cd $session_path" >> ${session}.batch
+	echo "#Setup Paths" >> ${session}.batch
+	echo 'export PATH=/export/freesurfer-5.0/bin:${PATH}' >> ${session}.batch
+	echo "FSLDIR=/export/fsl-4.1.6" >> ${session}.batch
+	echo '. ${FSLDIR}/etc/fslconf/fsl.sh' >> ${session}.batch
+	echo 'PATH=${FSLDIR}/bin:${PATH}' >> ${session}.batch
+	echo 'export FSLDIR PATH' >> ${session}.batch
+	echo "export REFDIR=~/atlas" >> ${session}.batch
+	echo "export RELEASE=/export/4dfp/" >> ${session}.batch
+	echo 'export PATH=/export/4dfp/:${PATH}' >> ${session}.batch
+	echo "#Run processing script" >> ${session}.batch
+	echo "~/scripts/dwi_proc ${session}.params >& dwi_proc.log" >> ${session}.batch
+	
+	#add session to qsub array
+	set qsubarray = ( $qsubarray $session )
+end
+
+#create qsub container
+echo -n "" > $outdir/qsubcontainer.sh
+foreach qsession ( $qsubarray )
+	echo "qsub $outdir/$qsession/${qsession}.batch" >> $outdir/qsubcontainer.sh
+	if ( $qsession != $qsubarray[$#qsubarray] ) echo "sleep 2" >> $outdir/qsubcontainer.sh
+end
+
+if ( $my_status == 0 ) then	
+	echo "chpc_dwi finished without errors. Type sh $outdir/qsubcontainer.sh to launch jobs."
+else
+	echo "chpc_dwi finished, but there was an error. See $outdir/skipped.log to see what jobs" \
+	"failed. Otherwise, type sh $outdir/qsubcontainer.sh to launch jobs."
+endif
+
+
+	
+	
+	
+
+
+			

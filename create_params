@@ -1,0 +1,227 @@
+#!/bin/tcsh
+#Script creates a params file for Avi's scripts. Can be used to do structural and/or DTI processing
+
+#(Process = 1: Free+Atl) (Process=2: Free+Atl + DTI) (Process=3: Free+Atl + fcMRI) (Process=4 Free+Atl + DTI + fcMRI)
+set process = 0
+
+if ($#argv == 0) then
+	echo "Usage: create_params -s SessionID -d Directory where the sorted RAW folder is -a Free+Atl OR -ad DTI only OR -af fcMRI only OR -adf DTI+Functional"
+	exit 1
+endif
+
+while ($#argv > 0)
+	switch ($argv[1])
+		case -d:
+			shift argv
+			set directory = $argv[1]		
+			#Thanks to dcm_sort for this...
+			if (`echo $directory | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."&&substr($0,1,1)!="~")print "1"}'` == 1) then
+				set directory = ${cwd}/${directory}
+			else if (`echo $directory | awk '{if(substr($0,1,1)==".")print "1"}'` == 1) then
+				set directory = $cwd
+			endif
+			shift argv
+			breaksw
+		case -a
+			shift argv
+			set process = 1
+			breaksw
+		case -ad:
+			shift argv
+			set process = 2
+			breaksw
+		case -af
+			shift argv
+			set process = 3
+			breaksw
+		case -adf
+			shift argv
+			set process = 4
+			breaksw
+		case -s:
+			shift argv
+			set session = $argv[1]
+			shift argv
+			breaksw
+		default:
+			echo "Unrecongizned option. See usage"
+			exit 1
+	endsw
+end
+
+cd $directory
+
+if (! -e "RAW.studies.txt") then
+	echo "You need to have a sorted RAW directory in $directory"
+	exit 1
+endif
+
+
+#create mprage params file
+if ( $process != 0 ) then
+	set avi_root = `dcm_root -d RAW -a`
+	set mprage_number = `grep -c ".*t1.*" RAW.studies.txt`
+	set mprage_numbers = ""
+	@ mp_count = 1
+	while ($mp_count <= $mprage_number)
+		if ($mp_count == 1) then
+			set mprage_grep = `grep ".*t1.*" RAW.studies.txt`
+		else
+			set mprage_grep = `grep -m${mp_count} ".*t1.*" RAW.studies.txt | tail -1`
+		endif
+		set mprage_numbers = ($mprage_numbers $mprage_grep[1])
+		@ mp_count++
+	end
+
+	echo "#General params" > ${session}.params
+	echo "set patid = $session" >> ${session}.params
+	echo "set inpath = ${directory}/RAW" >> ${session}.params
+	echo "set dcmroot = ${avi_root}" >> ${session}.params
+	echo "set target = /home/tblazey/atlas/CAPIIO" >> ${session}.params
+	echo "set session_path = ${directory}" >> ${session}.params
+	echo "set sorted = 0" >> ${session}.params
+	echo "\n#MPRAGE params" >> ${session}.params
+	echo "set mprs = ( ${mprage_numbers} )" >> ${session}.params
+else
+	echo "No processing option selected. See usage"
+	exit 1
+endif
+
+#create t2 params file
+if ($process == 2 || $process == 3 || $process == 4) then
+
+	set t2_number = `grep -c ".*t2.*" RAW.studies.txt`
+	set t2_numbers = ""
+	@ t2_count = 1
+	while ($t2_count <= $t2_number)
+		if ($t2_count == 1) then
+			set t2_grep = `grep ".*t2.*" RAW.studies.txt`
+		else
+			set t2_grep = `grep -m${t2_count} ".*t2.*" RAW.studies.txt | tail -1`
+		endif
+		set t2_numbers = ($t2_numbers $t2_grep[1])
+		@ t2_count++
+	end
+	
+	echo "\n#T2 params" >> ${session}.params
+	echo "set tse = ( ${t2_numbers} )" >> ${session}.params
+	
+endif 
+
+if ($process == 2 || $process == 4) then
+	set dti_number = `grep -c ".*ep2d_dif.*\|.*DTI.*" RAW.studies.txt`
+	set dti_numbers = ""
+	@ dti_count = 1
+	while ($dti_count <= $dti_number)
+		if ($dti_count == 1) then
+			set dti_grep = `grep ".*ep2d_dif.*\|.*DTI.*" RAW.studies.txt`
+		else
+			set dti_grep = `grep -m${dti_count} ".*ep2d_dif.*\|.*DTI.*" RAW.studies.txt | tail -1`
+		endif
+		set dti_numbers = ($dti_numbers $dti_grep[1])
+		@ dti_count++
+	end
+
+	set dti_file = `ls RAW/${avi_root}.${dti_numbers[1]}* | head -1`
+	if ($? == 1) then
+		echo "Cannot find files based on root"
+		exit 1
+	endif
+	#get the acquistion matrix
+	set matrix = `strings $dti_file | grep '[0-9]\{2\}p\*[0-9]\{2\}\|[0-9]\{3\}p.[0-9]\{3\}' | grep -v 'Q\|\\' | sed 's/[^0-9]/ /g'`
+	set matrix = ($matrix)
+	#get bmax
+	set bmax = `strings $dti_file | grep "BValue.*=" | awk 'BEGIN {FS="="}{print $2}'`
+
+	#set number of DTI volumes
+	set dti_volumes = "$dti_grep[4]"
+	set seq_volumes = `grep -om1 '2[0-9]d' RAW.studies.txt | sed 's/d//g'`
+	if ($dti_volumes != $seq_volumes + 1) then
+		set diff_vec =  "/home/tblazey/scripts/DiffVec_${bmax}_23dirnoB0.prm"
+		set grep_string =   "-g6,11,16 -g2,7,21 -g3,12,17,22 -g4,8,9,13,14,18,23  -g5,10,15,19,20,24,25" # no   b0	
+		set fsl_b = "-r /home/tblazey/scripts/fsl_${bmax}_noB0.bvec -b /home/tblazey/scripts/fsl_${bmax}_noB0.bval"
+	else
+		set diff_vec = "/home/tblazey/scripts/DiffVec_${bmax}_23dirplusB0.prm"
+		set grep_string	= "-g2,7,11 -g3,8,16,21 -g4,9,12,17,22 -g5,10,13,14,18,23 -g6,15,19,20,24,25" #with b0
+		set fsl_b = "-r /home/tblazey/scripts/fsl_${bmax}_plusB0.bvec -b /home/tblazey/scripts/fsl_${bmax}_plusB0.bval"
+	endif
+
+	switch ($dti_volumes)
+		case 26: #25+b0
+			set dti_script = "generic_DWI_script_090219_remove2" #26 volumes with b0, so remove two vectors
+			breaksw
+		case 25: #24+b0 or 25nob0
+			if ($dti_volumes != $seq_volumes + 1) then
+				set dti_script = "generic_DWI_script_090219_remove2_nob0" #25 volumes,no b0 so remove two vectors
+			else
+				set dti_script = "generic_DWI_script_090219_remove1" #24 volumes, with b0, so remove one vector
+			endif
+			breaksw
+		case 24: #23+b0 or 24 no b0
+			if ($dti_volumes != $seq_volumes + 1) then
+				set dti_script = "generic_DWI_script_090219_remove1_nob0" #24 volumes, no b0 so remove 1 vector
+			else
+				set dti_script = "generic_DWI_script_090219" #24 volumes with b0, so don't remove anything
+			endif
+			breaksw
+		default:
+			echo "Unknown number of dti volumes. Script only works for 26,25,and 24."
+			exit 1
+	endsw
+	
+	#create the Avi DTI params file
+	echo "\n#DTI params" >> ${session}.params
+	echo "# using script: ${dti_script}" >> ${session}.params
+	echo "set DWI = ( ${dti_numbers} )" >> ${session}.params
+	echo "@ dwinx = ${matrix[1]}" >> ${session}.params
+	echo "@ dwiny = ${matrix[2]}" >> ${session}.params
+	echo "set dtiprm = ${diff_vec}" >> ${session}.params
+	echo "set grpstr = '${grep_string}'" >> ${session}.params
+	echo "set diff_4dfp_opts = '-EF -t.1'" >> ${session}.params
+	echo "set fsl_string = '${fsl_b}'" >> ${session}.params	
+endif
+
+if ($process == 3 || $process == 4) then
+	set fc_number = `grep -c ".*ep2d_bold_connect.*" RAW.studies.txt`
+	set fc_numbers = ""
+	@ fc_count = 1
+	while ($fc_count <= $fc_number)
+		if ($fc_count == 1) then
+			set fc_grep = `grep ".*ep2d_bold_connect.*" RAW.studies.txt`
+		else
+			set fc_grep = `grep -m${fc_count} ".*ep2d_bold_connect.*" RAW.studies.txt | tail -1`
+		endif
+		set fc_numbers = ($fc_numbers $fc_grep[1])
+		@ fc_count++
+	end
+	
+	#get the TR
+	set fc_file = `ls RAW/${avi_root}.${fc_numbers[1]}* | head -1`
+	if ($? == 1) then
+		echo "Cannot find files based on root"
+		exit 1
+	endif
+	set fc_tr = `strings $fc_file | grep "alTR\[0\]" | awk 'BEGIN {FS="= "}{print $2}' | sed 's/0//g' | sed 's/\(.$\)/.\1/'`
+	
+	#create the Avi fcMRI params file
+	echo "\n#fcMRI params" >> ${session}.params
+	echo "set irun = ( ${fc_numbers} )" >> ${session}.params
+	echo "set TR_vol = ${fc_tr}" >> ${session}.params
+	cat /home/tblazey/scripts/fc_constant_params.txt >> ${session}.params
+	
+endif
+
+echo "\n\nexit" >> ${session}.params
+echo "Params file was successfully created for ${session}"
+
+
+
+
+
+
+
+
+
+
+
+
