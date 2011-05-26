@@ -7,6 +7,7 @@
 #	Changed directory structure to accomdate 5.1 removal of -force flag (subject directory can 
 #	no longer exist before invocation of recon-all with an -i flag
 #	Added support for CAP Vision sessions with IMA data
+# 	Added support for CAP Sonata sessions
 
 # Don't match wildcards in variables...
 set nonomatch
@@ -14,7 +15,7 @@ set nonomatch
 #usage
 if ( $#argv == 0 ) then
 	echo ""
-	echo "chpc_free: A basic wrapper to process FreeSurfer sessions on the CHPC Supercomputer"
+	echo "chpc_free: A basic wrapper to process ADRC FreeSurfer sessions on the CHPC Supercomputer"
 	echo ""
 	echo "Usage:"
 	echo ""
@@ -217,35 +218,50 @@ foreach session ( $sessions )
 	ArcGet -u $username -p $pass -host https://cnda.wustl.edu -s $session \
 	-o $session_data_path/temp $arc_string -z true -di -quality $quality_string
 	
-	find temp/ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) -exec mv {} ./ \;
-	rm -R temp/
-	
-	#check to see if the images are in dicom or IMA format.
-	set first_image = `ls * | grep -v ".*txt" | head -1`
-	set probe = `mri_probedicom --i $first_image`
-	if ( $? == 1 ) then
-		set probe = `mri_probe_ima --i $first_image`
+	#check to see if any of the normal extensions are present
+	set raw_number = `find temp/ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) | wc -l`
+	if ( $raw_number == 0 ) then
+		#try to use dicom to nifti's recursive conversion to see if any files without the normal
+		#extensions are present. This adds support for Sonata scans.
+		dcm2nii -r n -g n -d n -f n -i n -p n -o ./ temp/
+		set nii_check = `ls *.nii`
 		if ( $? == 1 ) then
-			echo "Error converting raw data for $session. Skipping..."
-			echo "$session : Unable to convert raw data" >> $output_path/skipped.txt
+			echo "Could not find any converable data for $session"
+			echo "$session : No Convertable data" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		else
-			set mp_numbers = `grep -c "$mp_name   usable" $readfile`
-			@ count = 1
-			while ( $count <= $mp_numbers )
-				set root = `grep "$mp_name   usable" $readfile | sed -n "${count}p"`
-				set root_image = `ls ${root[1]}* | head -1`
-				set run = `echo $root_image | grep -o '\-[0-9]\-' | sed 's/-//g'`
-				mri_convert $root_image s`printf "%03d" $run`.nii
-				@ count++
-			end				
+			#rm -R temp/
 		endif
 	else
-		#convert raw files to nifti. Do not crop/reorient or gzip. Also insure that only events are
-		#in the filname
-		dcm2nii -r n -g n -d n -f n -i n -p n * 
-	endif
+		find temp/ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) -exec mv {} ./ \;
+		#rm -R temp/
 	
+		#check to see if the images are in dicom or IMA format.
+		set first_image = `ls * | grep -v ".*txt" | head -1`
+		set probe = `mri_probedicom --i $first_image`
+		if ( $? == 1 ) then
+			set probe = `mri_probe_ima --i $first_image`
+			if ( $? == 1 ) then
+				echo "Error converting raw data for $session. Skipping..."
+				echo "$session : Unable to convert raw data" >> $output_path/skipped.txt
+				set my_status = 1; @ session_count++; continue;
+			else
+				set mp_numbers = `grep -c "$mp_name   usable" $readfile`
+				@ count = 1
+				while ( $count <= $mp_numbers )
+					set root = `grep "$mp_name   usable" $readfile | sed -n "${count}p"`
+					set root_image = `ls ${root[1]}* | head -1`
+					set run = `echo $root_image | grep -o '\-[0-9]\-' | sed 's/-//g'`
+					mri_convert $root_image s`printf "%03d" $run`.nii
+					@ count++
+				end				
+			endif
+		else
+			#convert raw files to nifti. Do not crop/reorient or gzip. Also insure that only events are
+			#in the filname
+			dcm2nii -r n -g n -d n -f n -i n -p n * 
+		endif
+	endif
 	
 	#set up the recon images. 
 	set raw_nii = `ls *.nii`; set recon_images = (); set atlas_images = (); @ recon_count = 1
