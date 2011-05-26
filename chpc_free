@@ -280,10 +280,10 @@ foreach session ( $sessions )
 	
 		#check to see if the images are in dicom or IMA format.
 		set first_image = `ls * | grep -v ".*txt" | head -1`
-		set probe = `mri_probedicom --i $first_image`
-		if ( $? != 0 ) then
-			set probe = `mri_probe_ima --i $first_image`
-			if ( $? != 0 ) then
+		set probe = `mri_probedicom --i $first_image --d filetype`
+		if ( $probe == "notdicom" ) then
+			set probe = `mri_probe_ima --i $first_image --d isima`
+			if ( $probe == 1 ) then
 				echo "Error converting raw data for $session. Skipping..."
 				echo "$session : Unable to convert raw data" >> $output_path/skipped.txt
 				set my_status = 1; @ session_count++; continue;
