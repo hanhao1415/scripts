@@ -36,6 +36,7 @@ if ( $#argv == 0 ) then
 	echo " 	-v: Specify FreeSurfer version. Takes 4.5.0, 5.0, or 5.1. Default is 5.1."
 	echo " 	-vmem: Specify the amount of virtual memory per job in gb. Default is 4." 
 	echo " 	-wtime: Specify job wall time in hours. Default is 48."
+	echo "	-sub: Submit jobs individually. Default is for user to sumbit as a group."
 	echo ""
 	echo "Dependencies:"
 	echo " 	1. Freesurfer (mri_convert, mri_probedicom, and mri_probe_ima) in path"
@@ -131,6 +132,8 @@ while ( $#argv > 0 )
 			set vmem = $argv[1]; shift; breaksw;
 		case -wtime:
 			set wtime = "$argv[1]:00:00" shift; breaksw;
+		case -sub:
+			set sub = 1; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -366,28 +369,41 @@ foreach session ( $sessions )
 		"$session_free_path/" >> ${session}.batch
 	endif
 	
-	#add session to qsub array
-	set qsubarray = ( $qsubarray $session )
+	#unless user overrides, submit in a group
+	if ( $?sub == 0 ) then
+		#add session to qsub array
+		set qsubarray = ( $qsubarray $session )
+	else
+		#submit each session individually
+		qsub $session_data_path/${session}.batch
+		#if this is the first session, link fsaverage
+		if ( $session_count == 1 ) ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" \
+		$output_path/sessions/fsaverage
+	endif
 	
 	@ session_count++;
 end
 
 #check to make sure at least one session was successfuly processed
-if ( $#qsubarray == 0 ) then
+if ( $session_count == 1 ) then
 	echo "No sessions were processed successfully. Exiting..."
 	exit 1
 endif
 
-#create qsub container
-echo -n "" > $output_path/qsubcontainer.sh
-foreach qsession ( $qsubarray )
-	echo "qsub $output_path/raw_data/$qsession/${qsession}.batch" >> $output_path/qsubcontainer.sh
-	if ( $qsession != $qsubarray[$#qsubarray] ) echo "sleep 2" >> $output_path/qsubcontainer.sh
-end
+#unless user overrides, launch using qsubcontainer
+if ( $?sub == 0 ) then
+	#create qsub container
+	echo -n "" > $output_path/qsubcontainer.sh
+	foreach qsession ( $qsubarray )
+		echo "qsub $output_path/raw_data/$qsession/${qsession}.batch" >> $output_path/qsubcontainer.sh
+		if ( $qsession != $qsubarray[$#qsubarray] ) echo "sleep 2" >> $output_path/qsubcontainer.sh
+	end
 
-#link fsaverage for qcache
-ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" $output_path/sessions/fsaverage
+	#link fsaverage for qcache
+	ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" $output_path/sessions/fsaverage
+endif
 
+#finish up
 if ( $my_status == 0 ) then	
 	echo "chpc_free finished without errors. Type sh $output_path/qsubcontainer.sh to launch jobs."
 else
