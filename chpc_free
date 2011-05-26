@@ -37,6 +37,7 @@ if ( $#argv == 0 ) then
 	echo " 	-vmem: Specify the amount of virtual memory per job in gb. Default is 4." 
 	echo " 	-wtime: Specify job wall time in hours. Default is 48."
 	echo "	-sub: Submit jobs individually. Default is for user to sumbit as a group."
+	echo "	-nohippo: Turn off 5.1 hippocampus subfield segmentation. On by default."
 	echo ""
 	echo "Dependencies:"
 	echo " 	1. Freesurfer (mri_convert, mri_probedicom, and mri_probe_ima) in path"
@@ -134,6 +135,8 @@ while ( $#argv > 0 )
 			set wtime = "$argv[1]:00:00" shift; breaksw;
 		case -sub:
 			set sub = 1; breaksw;
+		case -nohippo:
+			set nohippo = 1; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -344,7 +347,7 @@ foreach session ( $sessions )
 	echo 'export PERL5LIB=${FREESURFER_HOME}/mni/lib/perl5/5.8.5/' >> ${session}.batch
 	
 	#turn on hippocampus subfield segmentation for version 5.1.
-	if ( $free_ver == "5.1" ) then
+	if ( $free_ver == "5.1" && $?nohippo == 0 ) then
 		echo "recon-all -s $session $recon_images -all -qcache -hippo-subfields" >> ${session}.batch
 	else
 		echo "recon-all -s $session $recon_images -all -qcache" >> ${session}.batch
