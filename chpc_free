@@ -62,7 +62,7 @@ if ( $#first_check != 0 ) then
 endif
 
 #set globals
-set sessions = (); set qsubarray = (); set my_status = 0;
+set sessions = (); set qsubarray = (); set my_status = 0; set proc_count = 0;
 
 #parse arguments
 while ( $#argv > 0 ) 
@@ -375,17 +375,18 @@ foreach session ( $sessions )
 		set qsubarray = ( $qsubarray $session )
 	else
 		#submit each session individually
+		echo "Submiting session: $session to cluster...."
 		qsub $session_data_path/${session}.batch
 		#if this is the first session, link fsaverage
 		if ( $session_count == 1 ) ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" \
 		$output_path/sessions/fsaverage
 	endif
 	
-	@ session_count++;
+	@ session_count++; @ proc_count++
 end
 
 #check to make sure at least one session was successfuly processed
-if ( $session_count == 1 ) then
+if ( $proc_count == 0 ) then
 	echo "No sessions were processed successfully. Exiting..."
 	exit 1
 endif
@@ -405,10 +406,13 @@ endif
 
 #finish up
 if ( $my_status == 0 ) then	
-	echo "chpc_free finished without errors. Type sh $output_path/qsubcontainer.sh to launch jobs."
+	echo "chpc_free finished without errors."
+	if ( $?sub == 0 ) echo "Type: sh $output_path/qsubcontainer.sh to launch jobs."
 else
-	echo "chpc_free finished, but there was an error. See $output_path/skipped.txt to see what jobs" \
-	"failed. Otherwise, type sh $output_path/qsubcontainer.sh to launch jobs."
+	echo "chpc_free finished, but there was an error. See $output_path/skipped.txt to see what"\
+	"jobs failed"
+	if ( $?sub == 0 ) echo "You can launch the jobs that did not fail by typing: sh"\
+	"$output_path/qsubcontainer.sh to launch jobs."	
 endif
 
 
