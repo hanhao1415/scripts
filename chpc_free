@@ -1,4 +1,4 @@
-#!/bin/tcsh
+#!/bin/tcsh -f
 #By Tyler Blazey - Spring 2011
 
 #Updated May 25, 2011 
@@ -50,13 +50,13 @@ endif
 #first dependency check
 set first_check = ()
 foreach first_bin ( mri_convert mri_probedicom mri_probe_ima dcm2nii ArcRead ArcGet )
-	set check = `type -p $first_bin`
-	if ( $#check == 0 ) set first_check = ( $first_check $check:t );
+	set check = `where $first_bin`
+	if ( $#check == 0 ) set first_check = ( $first_check $first_bin );
 end
 
 if ( $#first_check != 0 ) then
 	echo "The following programs were not found in your path: $first_check"
-	echo "This script will not run until this has been correct. See usage for more info"
+	echo "This script will not run until this has been corrected. See usage for more info"
 	exit 1
 endif
 
