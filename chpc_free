@@ -2,8 +2,11 @@
 #By Tyler Blazey - Spring 2011
 
 #Updated May 25, 2011 
-#FreeSurfer 5.1 Now supported. Changed directory structure to accomdate the removal of the -force
-#flag. Also changed the standard error/output write location to each session's directory.
+#Several changes made:
+#	Support for FreeSurfer 5.1
+#	Changed directory structure to accomdate 5.1 removal of -force flag (subject directory can 
+#	no longer exist before invocation of recon-all with an -i flag
+#	Added support for CAP Vision sessions with IMA data
 
 # Don't match wildcards in variables...
 set nonomatch
@@ -34,7 +37,7 @@ if ( $#argv == 0 ) then
 	echo " 	-wtime: Specify job wall time in hours. Default is 48."
 	echo ""
 	echo "Dependencies:"
-	echo " 	1. xnat_tools and dcm2nii in path."
+	echo " 	1. Freesurfer, xnat_tools, and dcm2nii in path."
 	echo "	2. 4dfp atlas images in ~/atlas"
 	echo "	3. atl_reg in ~/scripts"
 	echo ""
@@ -143,16 +146,16 @@ foreach session ( $sessions )
 	#make directories and such
 	set session_free_path = "$output/sessions/$session"
 	set session_data_path = "$output/raw_data/$session"
-	mkdir $session_data_path $session_data_path/temp 
+	mkdir $session_data_path $session_data_path
 	
 	#run ArcRead to get a list of the scans for the current sessions
 	ArcRead -u $username -p $pass -host https://cnda.wustl.edu -s $session \
-	-o $session_data_path/temp
+	-o $session_data_path
 	cd $session_data_path
-	set readfile = `ls temp/*.txt`
+	set readfile = `ls *.txt`
 	if ( $? == 1 ) then
 		echo "ArcRead could not find $session. Skipping...."
-		echo "$session ArcRead" >> $output/skipped.txt
+		echo "$session : ArcRead" >> $output/skipped.txt
 		set my_status = 1; @ session_count++; continue;
 	endif
 	
@@ -175,7 +178,7 @@ foreach session ( $sessions )
 		grep -qi $mp_search $readfile
 		if ( $? == 1 ) then
 			echo "$session does not have an MPRAGE of sufficient quality. Skipping..."
-			echo "$session No MPRAGE" >> $output/skipped.txt
+			echo "$session : No MPRAGE" >> $output/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		else
 			set mp_name = "MPRAGE"
@@ -205,22 +208,40 @@ foreach session ( $sessions )
 		grep -qi $search $readfile
 		if ( $? == 1 ) then
 			echo "Run $mprages[$session_count] is not a MPRAGE of specified quality. Skipping..."
-			echo "$session No MPRAGE for run $mprages[$session_count]" >> $output/skipped.txt
+			echo "$session : No MPRAGE for run $mprages[$session_count]" >> $output/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		endif
 	endif
 		
 	#Download files with ArcGet
 	ArcGet -u $username -p $pass -host https://cnda.wustl.edu -s $session \
-	-o $session_data_path/temp $arc_string -z true -di -quality $quality_string
+	-o $session_data_path $arc_string -z true -di -quality $quality_string
 	
-	#Move files and then clean up.
-	find temp/ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) -exec mv {} ./ \;
-	rm -R temp
-	
-	#convert raw files to nifti. Do not crop/reorient or gzip. Also insure that only events are
-	#in the filname
-	dcm2nii -r n -g n -d n -f n -i n -p n *; set raw_nii = `ls *.nii`; 
+	#check to see if the images are in dicom or IMA format.
+	set first_image = `ls --ignore="*.txt" * | head -1`
+	set probe = `mri_probedicom --i $first_image`
+	if ( $? == 1 ) then
+		set probe = `mri_probed_ima --i $first_image`
+		if ( $? == 1 ) then
+			echo "Error converting raw data for $session. Skipping..."
+			echo "$session : Unable to convert raw data" >> $output/skipped.txt
+			set my_status = 1; @ session_count++; continue;
+		else
+			set mp_numbers = `grep -c "$mp_name   usable" $readfile`
+			@ count = 1
+			while ( $count <= $mp_numbers )
+				set root = `grep "$mp_name   usable" $readfile | sed -n "${count}p"`
+				set root_image = `ls ${root[1]}* | head -1`
+				set run = `echo $root_image | grep -o '\-[0-9]\-' | sed 's/-//g'`
+				mri_convert $root_image s`printf "%03d" $run`.nii
+				@ count++
+			end				
+		endif
+	else
+		#convert raw files to nifti. Do not crop/reorient or gzip. Also insure that only events are
+		#in the filname
+		dcm2nii -r n -g n -d n -f n -i n -p n *; set raw_nii = `ls *.nii`; 
+	endif
 	
 	
 	#set up the recon images. 
@@ -249,7 +270,7 @@ foreach session ( $sessions )
 	#check to if recon_images is setup ok
 	if ( $#recon_images == 0 ) then
 		echo "Error setting up recon-all. Skipping session..."
-		echo "$session recon-all setup" >> $output/skipped.txt
+		echo "$session : recon-all setup" >> $output/skipped.txt
 		set my_status = 1; @ session_count++; continue;
 	endif
 	
