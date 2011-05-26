@@ -372,6 +372,12 @@ foreach session ( $sessions )
 	@ session_count++;
 end
 
+#check to make sure at least one session was successfuly processed
+if ( $#qsubarray == 0 ) then
+	echo "No sessions were processed successfully. Exiting..."
+	exit 1
+endif
+
 #create qsub container
 echo -n "" > $output_path/qsubcontainer.sh
 foreach qsession ( $qsubarray )
