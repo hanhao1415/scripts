@@ -60,7 +60,7 @@ while ( $#argv > 0 )
 			set sessions = ( $sessions $argv[1] ); shift; breaksw;
 		case -sm
 			echo $argv[2] | grep -qw "[0-9]\|[0-9]\{2\}\|[0-9]\{3\}"
-			if ( $? == 1 ) then
+			if ( $? != 0 ) then
 				echo "Error: Run $argv[2] does not appear a 1,2, or 3 digit run number. Exiting..."
 				exit
 			endif
@@ -147,14 +147,21 @@ foreach session ( $sessions )
 	#make directories and such
 	set session_free_path = "$output_path/sessions/$session"
 	set session_data_path = "$output_path/raw_data/$session"
-	mkdir $session_data_path
+	
+	#check to see if subject already exists. If it does, skip it
+	if ( -e $session_data_path/${session}.batch ) then
+		echo "$session has already been processed by chpc_free. Skipping duplicate..."
+		echo "$session : Duplicate" >> $output_path/skipped.txt
+		set my_status = 1; @ session_count++; continue;
+	endif
+	
+	#make subject directory if it does not exist
+	if ( ! -e $session_data_path ) mkdir $session_data_path; 
 	
 	#run ArcRead to get a list of the scans for the current sessions
-	ArcRead -u $username -p $pass -host https://cnda.wustl.edu -s $session \
-	-o $session_data_path/
-	cd $session_data_path
-	set readfile = `ls *.txt`
-	if ( $? == 1 ) then
+	ArcRead -u $username -p $pass -host https://cnda.wustl.edu -s $session -o $session_data_path/
+	cd $session_data_path; set readfile = `ls *.txt`;
+	if ( $? != 0 ) then
 		echo "ArcRead could not find $session. Skipping...."
 		echo "$session : ArcRead" >> $output_path/skipped.txt
 		set my_status = 1; @ session_count++; continue;
@@ -175,9 +182,9 @@ foreach session ( $sessions )
 	
 	#Use search strings to figure out name for T1
 	grep -qi $t1_search $readfile
-	if ( $? == 1 ) then
+	if ( $? != 0 ) then
 		grep -qi $mp_search $readfile
-		if ( $? == 1 ) then
+		if ( $? != 0 ) then
 			echo "$session does not have an MPRAGE of sufficient quality. Skipping..."
 			echo "$session : No MPRAGE" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
@@ -185,7 +192,7 @@ foreach session ( $sessions )
 			set mp_name = "MPRAGE"
 			#Download DIAN MPRAGE NORM scans if they are present...
 			grep -i $norm_search $readfile
-			if ( $? == 1 ) then
+			if ( $? != 0 ) then
 				set arc_string = "-r MPRAGE"
 			else
 				set arc_string = "-r MPRAGE -r MPRAGE+NORM"
@@ -207,7 +214,7 @@ foreach session ( $sessions )
 		endif
 		# use search strings to check if run is an MPRAGE
 		grep -qi $search $readfile
-		if ( $? == 1 ) then
+		if ( $? != 0) then
 			echo "Run $mprages[$session_count] is not a MPRAGE of specified quality. Skipping..."
 			echo "$session : No MPRAGE for run $mprages[$session_count]" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
@@ -225,23 +232,23 @@ foreach session ( $sessions )
 		#extensions are present. This adds support for Sonata scans.
 		dcm2nii -r n -g n -d n -f n -i n -p n -o ./ temp/
 		set nii_check = `ls *.nii`
-		if ( $? == 1 ) then
+		if ( $? != 0 ) then
 			echo "Could not find any converable data for $session"
 			echo "$session : No Convertable data" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		else
-			#rm -R temp/
+			rm -R temp/
 		endif
 	else
 		find temp/ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) -exec mv {} ./ \;
-		#rm -R temp/
+		rm -R temp/
 	
 		#check to see if the images are in dicom or IMA format.
 		set first_image = `ls * | grep -v ".*txt" | head -1`
 		set probe = `mri_probedicom --i $first_image`
-		if ( $? == 1 ) then
+		if ( $? != 0 ) then
 			set probe = `mri_probe_ima --i $first_image`
-			if ( $? == 1 ) then
+			if ( $? != 0 ) then
 				echo "Error converting raw data for $session. Skipping..."
 				echo "$session : Unable to convert raw data" >> $output_path/skipped.txt
 				set my_status = 1; @ session_count++; continue;
@@ -344,7 +351,7 @@ foreach qsession ( $qsubarray )
 end
 
 #link fsaverage for qcache
-ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" $output_path/fsaverage
+ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" $output_path/sessions/fsaverage
 
 if ( $my_status == 0 ) then	
 	echo "chpc_free finished without errors. Type sh $output_path/qsubcontainer.sh to launch jobs."
