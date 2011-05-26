@@ -38,11 +38,26 @@ if ( $#argv == 0 ) then
 	echo " 	-wtime: Specify job wall time in hours. Default is 48."
 	echo ""
 	echo "Dependencies:"
-	echo " 	1. Freesurfer, xnat_tools, and dcm2nii in path."
-	echo "	2. 4dfp atlas images in ~/atlas"
-	echo "	3. atl_reg in ~/scripts"
+	echo " 	1. Freesurfer (mri_convert, mri_probedicom, and mri_probe_ima) in path"
+	echo " 	2. xnat_tools (ArcRead and ArcGet) in path"
+	echo " 	3. dcm2nii in path"
+	echo "	4. 4dfp atlas images in ~/atlas"
+	echo "	5. atl_reg in ~/scripts"
 	echo ""
-	exit
+	exit 0
+endif
+
+#first dependency check
+set first_check = ()
+foreach first_bin ( mri_convert mri_probedicom mri_probe_ima dcm2nii ArcRead ArcGet )
+	set check = `type -p $first_bin`
+	if ( $#check == 0 ) set first_check = ( $first_check $check:t );
+end
+
+if ( $#first_check != 0 ) then
+	echo "The following programs were not found in your path: $first_check"
+	echo "This script will not run until this has been correct. See usage for more info"
+	exit 1
 endif
 
 #set globals
@@ -62,7 +77,7 @@ while ( $#argv > 0 )
 			echo $argv[2] | grep -qw "[0-9]\|[0-9]\{2\}\|[0-9]\{3\}"
 			if ( $? != 0 ) then
 				echo "Error: Run $argv[2] does not appear a 1,2, or 3 digit run number. Exiting..."
-				exit
+				exit 1
 			endif
 			set mprages =  ( ); set specific = 1;
 			set sessions = ( $sessions $argv[1] ); set mprages = ( $mprages $argv[2] );
@@ -72,14 +87,14 @@ while ( $#argv > 0 )
 			#check if fill exists. If it does not, exit.
 			if ( ! -e $argv[1] ) then
 				"Error: Could not find $argv[1]"
-				exit
+				exit 1
 			endif
 			set sessions = ( $sessions `cat $argv[1]` ); shift; breaksw;
 		case -fm:
 			#check if file exists. If it does not, exit.
 			if ( ! -e $argv[1] ) then
 				"Error: Could not find $argv[1]"
-				exit
+				exit 1
 			endif
 			set mprages =  ( ); set specific = 1;
 			foreach line ( `cat $argv[1]` )
@@ -109,7 +124,7 @@ while ( $#argv > 0 )
 		case -v:
 			if ( $argv[1] != "4.5.0" && $argv[1] != "5.0" && $argv[1] != "5.1" ) then
 				echo "Unknown FreeSurfer Version $argv[1]. Exiting..."
-				exit
+				exit 1
 			endif
 			set free_ver = $argv[1]; shift; breaksw;
 		case -vmem:
@@ -118,14 +133,14 @@ while ( $#argv > 0 )
 			set wtime = "$argv[1]:00:00" shift; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
-			exit
+			exit 1
 	endsw
 end
 
 #check to make sure all required options have been set
 if ( $?username == 0 || $?pass == 0 || $#sessions == 0  || $?output_path == 0 ) then
 	echo "Missing required arguments. See usage"
-	exit
+	exit 1
 endif
 
 #set defaults
@@ -136,6 +151,20 @@ if ( $?max == 0 ) set max = 2
 if ( $?free_ver == 0 ) set free_ver = "5.1"
 if ( $?vmem == 0 ) set vmem = 4
 if ( $?wtime == 0 ) set wtime = "48:00:00"
+
+#second dependency check
+if ( $?noatlas == 0 ) then
+	if ( ! -e ~/scripts/atl_reg ) then
+		echo "Cannot find atl_reg in ~/scripts folder. Either correct this or run using the"\
+		"-noatlas flag"
+		exit 1
+	endif
+	if ( ! -e ~/atlas/${atlas}.4dfp.img ) then
+		echo "Cannot find image for atlas $atlas in ~/atlas. Your options are to correct this"\
+		"run with the -noatlas flag, or change the target atlas with the -atlas flag"
+		exit 1
+	endif
+endif
 
 #make output_path directory if it does not exist
 if ( ! -d $output_path ) mkdir $output_path $output_path/sessions $output_path/raw_data
@@ -149,7 +178,7 @@ foreach session ( $sessions )
 	set session_data_path = "$output_path/raw_data/$session"
 	
 	#check to see if subject already exists. If it does, skip it
-	if ( -e $session_data_path/${session}.batch ) then
+	if ( -e $session_data_path ) then
 		echo "$session has already been processed by chpc_free. Skipping duplicate..."
 		echo "$session : Duplicate" >> $output_path/skipped.txt
 		set my_status = 1; @ session_count++; continue;
