@@ -87,12 +87,12 @@ while ( $#argv > 0 )
 			end
 			shift; breaksw;
 		case -o:
-			set output = $argv[1]
+			set output_path = $argv[1]
 			#If user does not give a path, assume current working directory.
 			#Thanks to dcm_sort for this...
-			if (`echo $output | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."&&substr($0,1,1) \
+			if (`echo $output_path | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."&&substr($0,1,1) \
 			!="~")print "1"}'` == 1) then
-				set output = ${cwd}/${output}
+				set output_path = ${cwd}/${output_path}
 			endif
 			shift; breaksw;
 		case -noatlas:
@@ -122,7 +122,7 @@ while ( $#argv > 0 )
 end
 
 #check to make sure all required options have been set
-if ( $?username == 0 || $?pass == 0 || $#sessions == 0  || $?output == 0 ) then
+if ( $?username == 0 || $?pass == 0 || $#sessions == 0  || $?output_path == 0 ) then
 	echo "Missing required arguments. See usage"
 	exit
 endif
@@ -136,26 +136,26 @@ if ( $?free_ver == 0 ) set free_ver = "5.1"
 if ( $?vmem == 0 ) set vmem = 4
 if ( $?wtime == 0 ) set wtime = "48:00:00"
 
-#make output directory if it does not exist
-if ( ! -d $output ) mkdir $output $output/sessions $output/raw_data
+#make output_path directory if it does not exist
+if ( ! -d $output_path ) mkdir $output_path $output_path/sessions $output_path/raw_data
 
 @ session_count = 1;
 #setup each each sessions
 foreach session ( $sessions )
 	
 	#make directories and such
-	set session_free_path = "$output/sessions/$session"
-	set session_data_path = "$output/raw_data/$session"
-	mkdir $session_data_path $session_data_path
+	set session_free_path = "$output_path/sessions/$session"
+	set session_data_path = "$output_path/raw_data/$session"
+	mkdir $session_data_path
 	
 	#run ArcRead to get a list of the scans for the current sessions
 	ArcRead -u $username -p $pass -host https://cnda.wustl.edu -s $session \
-	-o $session_data_path
+	-o $session_data_path/
 	cd $session_data_path
 	set readfile = `ls *.txt`
 	if ( $? == 1 ) then
 		echo "ArcRead could not find $session. Skipping...."
-		echo "$session : ArcRead" >> $output/skipped.txt
+		echo "$session : ArcRead" >> $output_path/skipped.txt
 		set my_status = 1; @ session_count++; continue;
 	endif
 	
@@ -178,7 +178,7 @@ foreach session ( $sessions )
 		grep -qi $mp_search $readfile
 		if ( $? == 1 ) then
 			echo "$session does not have an MPRAGE of sufficient quality. Skipping..."
-			echo "$session : No MPRAGE" >> $output/skipped.txt
+			echo "$session : No MPRAGE" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		else
 			set mp_name = "MPRAGE"
@@ -208,14 +208,14 @@ foreach session ( $sessions )
 		grep -qi $search $readfile
 		if ( $? == 1 ) then
 			echo "Run $mprages[$session_count] is not a MPRAGE of specified quality. Skipping..."
-			echo "$session : No MPRAGE for run $mprages[$session_count]" >> $output/skipped.txt
+			echo "$session : No MPRAGE for run $mprages[$session_count]" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		endif
 	endif
 		
 	#Download files with ArcGet
 	ArcGet -u $username -p $pass -host https://cnda.wustl.edu -s $session \
-	-o $session_data_path $arc_string -z true -di -quality $quality_string
+	-o $session_data_path/ $arc_string -z true -di -quality $quality_string
 	
 	#check to see if the images are in dicom or IMA format.
 	set first_image = `ls --ignore="*.txt" * | head -1`
@@ -224,7 +224,7 @@ foreach session ( $sessions )
 		set probe = `mri_probed_ima --i $first_image`
 		if ( $? == 1 ) then
 			echo "Error converting raw data for $session. Skipping..."
-			echo "$session : Unable to convert raw data" >> $output/skipped.txt
+			echo "$session : Unable to convert raw data" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		else
 			set mp_numbers = `grep -c "$mp_name   usable" $readfile`
@@ -270,7 +270,7 @@ foreach session ( $sessions )
 	#check to if recon_images is setup ok
 	if ( $#recon_images == 0 ) then
 		echo "Error setting up recon-all. Skipping session..."
-		echo "$session : recon-all setup" >> $output/skipped.txt
+		echo "$session : recon-all setup" >> $output_path/skipped.txt
 		set my_status = 1; @ session_count++; continue;
 	endif
 	
@@ -279,7 +279,7 @@ foreach session ( $sessions )
 	"$email -o ${session_free_path}/${session}.out -e ${session_free_path}/${session}.error" \
 	> ${session}.batch
 	echo "#Setup FreeSurfer Processing" >> ${session}.batch
-	echo "export SUBJECTS_DIR=${output}/sessions" >> ${session}.batch
+	echo "export SUBJECTS_DIR=${output_path}/sessions" >> ${session}.batch
 	echo "export FREESURFER_HOME=/export/freesurfer-$free_ver" >> ${session}.batch
 	echo 'export PATH=${FREESURFER_HOME}/bin:${PATH}' >> ${session}.batch
 	echo 'export PATH=${FREESURFER_HOME}/mni/bin:${PATH}' >> ${session}.batch
@@ -318,20 +318,20 @@ foreach session ( $sessions )
 end
 
 #create qsub container
-echo -n "" > $output/qsubcontainer.sh
+echo -n "" > $output_path/qsubcontainer.sh
 foreach qsession ( $qsubarray )
-	echo "qsub $output/raw_data/$qsession/${qsession}.batch" >> $output/qsubcontainer.sh
-	if ( $qsession != $qsubarray[$#qsubarray] ) echo "sleep 2" >> $output/qsubcontainer.sh
+	echo "qsub $output_path/raw_data/$qsession/${qsession}.batch" >> $output_path/qsubcontainer.sh
+	if ( $qsession != $qsubarray[$#qsubarray] ) echo "sleep 2" >> $output_path/qsubcontainer.sh
 end
 
 #link fsaverage for qcache
-ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" $output/fsaverage
+ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" $output_path/fsaverage
 
 if ( $my_status == 0 ) then	
-	echo "chpc_free finished without errors. Type sh $output/qsubcontainer.sh to launch jobs."
+	echo "chpc_free finished without errors. Type sh $output_path/qsubcontainer.sh to launch jobs."
 else
-	echo "chpc_free finished, but there was an error. See $output/skipped.txt to see what jobs" \
-	"failed. Otherwise, type sh $output/qsubcontainer.sh to launch jobs."
+	echo "chpc_free finished, but there was an error. See $output_path/skipped.txt to see what jobs" \
+	"failed. Otherwise, type sh $output_path/qsubcontainer.sh to launch jobs."
 endif
 
 
