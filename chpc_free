@@ -221,7 +221,7 @@ foreach session ( $sessions )
 	set first_image = `ls --ignore="*.txt" * | head -1`
 	set probe = `mri_probedicom --i $first_image`
 	if ( $? == 1 ) then
-		set probe = `mri_probed_ima --i $first_image`
+		set probe = `mri_probe_ima --i $first_image`
 		if ( $? == 1 ) then
 			echo "Error converting raw data for $session. Skipping..."
 			echo "$session : Unable to convert raw data" >> $output_path/skipped.txt
