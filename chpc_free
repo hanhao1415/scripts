@@ -108,8 +108,8 @@ while ( $#argv > 0 )
 			set output_path = $argv[1]
 			#If user does not give a path, assume current working directory.
 			#Thanks to dcm_sort for this...
-			if (`echo $output_path | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."&&substr($0,1,1) \
-			!="~")print "1"}'` == 1) then
+			if (`echo $output_path | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."\
+			&&substr($0,1,1) !="~")print "1"}'` == 1) then
 				set output_path = ${cwd}/${output_path}
 			endif
 			shift; breaksw;
@@ -204,14 +204,13 @@ foreach session ( $sessions )
 	
 	#Setup search strings
 	if ( $quality > 1 ) then
-		set t1_search = "t1_mpr_1mm_p2_pos50.*usable\|t1_mpr_1mm_p2_pos50.*questionable"
-		set mp_search = "MPRAGE.*usable\|MPRAGE.*questionable"
-		set norm_search = "MPRAGE.NORM.*usable\|MPRAGE.NORM.*questionable"
+		set t1_search = "t1_mpr_1mm_p2_pos50[[:space:]][[:space:]][[:space:]]usable\|"\
+		"t1_mpr_1mm_p2_pos50.*questionable"
+		set mp_search = "MPRAGE.*[[:space:]][[:space:]][[:space:]]usable\|MPRAGE.*questionable"
 		set quality_string = "usable,questionable"
 	else
-		set t1_search = "t1_mpr_1mm_p2_pos50.*usable"
-		set mp_search = "MPRAGE.*usable"
-		set norm_search = "MPRAGE.NORM.*usable"
+		set t1_search = "t1_mpr_1mm_p2_pos50[[:space:]][[:space:]][[:space:]]usable"
+		set mp_search = "MPRAGE.*[[:space:]][[:space:]][[:space:]]usable"
 		set quality_string = "usable"
 	endif
 	
@@ -224,15 +223,31 @@ foreach session ( $sessions )
 			echo "$session : No MPRAGE" >> $output_path/skipped.txt
 			set my_status = 1; @ session_count++; continue;
 		else
-			set mp_name = "MPRAGE"
-			#Download DIAN MPRAGE NORM scans if they are present...
-			grep -i $norm_search $readfile
-			if ( $? != 0 ) then
-				set arc_string = "-r MPRAGE"
-			else
-				set arc_string = "-r MPRAGE -r MPRAGE+NORM"
+			set mp_name = "MPRAGE"; set arc_string = ( )
+				
+			#check for MPRAGE
+			grep -i $mp_search $readfile | grep -vi "GRAPPA" | grep -vqi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( "-r MPRAGE" )
 			endif
-		endif
+			
+			#check for MPRAGE repeat
+			grep -i $mp_search $readfile | grep -vi "GRAPPA" | grep -qi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( $arc_string "-r MPRAGE+repeat" )
+			endif
+			
+			#check for GRAPPA2
+			grep -i $mp_search $readfile | grep -i "GRAPPA" | grep -vqi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( $arc_string "-r MPRAGE+GRAPPA2" )
+			endif
+			
+			#check for GRAPPA2 repeat
+			grep -i $mp_search $readfile | grep -i "GRAPPA" | grep -qi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( $arc_string "-r MPRAGE+GRAPPA2+repeat" )
+			endif		
 	else
 		set arc_string = "-r t1_mpr_1mm_p2_pos50"
 		set mp_name = "t1_mpr_1mm_p2_pos50"
@@ -242,10 +257,9 @@ foreach session ( $sessions )
 	if ( $?specific == 1 ) then
 		#setup search strings
 		if ( $quality > 1 ) then
-			set search = "$mprages[$session_count].*$mp_name.*usable\|$mprages[$session_count].*"\
-			"$mp_name.*questionable"
+			set search = "$mprages[$session_count].*$mp_name.*[[:space:]][[:space:]][[:space:]]usable\|$mprages[$session_count].*$mp_name.*questionable"
 		else
-			set search = "$mprages[$session_count].*$mp_name.*usable"
+			set search = "$mprages[$session_count].*$mp_name.*[[:space:]][[:space:]][[:space:]]usable"
 		endif
 		# use search strings to check if run is an MPRAGE
 		grep -qi $search $readfile
@@ -265,7 +279,7 @@ foreach session ( $sessions )
 	if ( $raw_number == 0 ) then
 		#try to use dicom to nifti's recursive conversion to see if any files without the normal
 		#extensions are present. This adds support for Sonata scans.
-		dcm2nii -r n -g n -d n -f n -i n -p n -o ./ temp/
+		dcm2nii -r n -g n -o ./ temp/
 		set nii_check = `ls *.nii`
 		if ( $? != 0 ) then
 			echo "Could not find any converable data for $session"
@@ -291,7 +305,13 @@ foreach session ( $sessions )
 				set mp_numbers = `grep -c "$mp_name   usable" $readfile`
 				@ count = 1
 				while ( $count <= $mp_numbers )
-					set root = `grep "$mp_name   usable" $readfile | sed -n "${count}p"`
+					if ( $quality > 1 ) then
+						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]"\
+						"usable\|${mp_name}.*questionable" $readfile | sed -n "${count}p"`
+					else
+						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]"\
+						"usable" $readfile | sed -n "${count}p"`
+					endif
 					set root_image = `ls ${root[1]}* | head -1`
 					set run = `echo $root_image | grep -o '\-[0-9]\-' | sed 's/-//g'`
 					mri_convert $root_image s`printf "%03d" $run`.nii
@@ -299,9 +319,8 @@ foreach session ( $sessions )
 				end				
 			endif
 		else
-			#convert raw files to nifti. Do not crop/reorient or gzip. Also insure that only events are
-			#in the filname
-			dcm2nii -r n -g n -d n -f n -i n -p n * 
+			#convert raw files to nifti. Do not crop/reorient or gzip. 
+			dcm2nii -r n -g n * 
 		endif
 	endif
 	
@@ -310,9 +329,8 @@ foreach session ( $sessions )
 	while ($recon_count <= $#raw_nii )
 		#if user wanted, only use the specificed run number
 		if ( $?specific == 1 ) then
-			#first sed command is to get run number, second is to remove leading zeros if present
-			set run = `echo $raw_nii[$recon_count] | sed 's/\(s\)\([0-9]\{3\}\).*/\2/' \
-			| sed 's/^0*//g'`
+			#Sed command is to remove s and leading zeros if present
+			set run = `echo $raw_nii[$recon_count] |grep -o "s[0-9]\{3\}" | sed 's/^s0*//g'`
 			if ( $run == $mprages[$session_count] ) then
 				set recon_images = ( $recon_images \
 				"-i $session_data_path/$raw_nii[$recon_count]" )
@@ -399,7 +417,8 @@ if ( $?sub == 0 ) then
 	#create qsub container
 	echo -n "" > $output_path/qsubcontainer.sh
 	foreach qsession ( $qsubarray )
-		echo "qsub $output_path/raw_data/$qsession/${qsession}.batch" >> $output_path/qsubcontainer.sh
+		echo "qsub $output_path/raw_data/$qsession/${qsession}.batch" >> \
+		$output_path/qsubcontainer.sh
 		if ( $qsession != $qsubarray[$#qsubarray] ) echo "sleep 2" >> $output_path/qsubcontainer.sh
 	end
 
