@@ -1,0 +1,57 @@
+#!/bin/tcsh -f 
+
+#dti_factor: Simple t4_factor wrapper. Takes a dwi_cross_xalign3d_4dfp .dat file and outputs 
+#rotations and translations for each volume. 
+
+#usage and argument check
+if ( $#argv != 2 ) then
+	echo "Usage: dti_factor <input file> <output file>"
+	echo "Note: input file must be a .dat file from dwi_cross_xalign3d_4dfp"
+	exit 0
+endif
+
+#set input to first argument, output to second
+set in_file = $1
+set out_file = $2
+
+#check for input file
+if ( ! -e $in_file ) then
+	echo "Could not find $in_file"
+	exit 1
+endif
+
+#make output file with correct header
+echo "frame disX(mm) disY(mm) disZ(mm) rotX(mm) rotY(mm) rotZ(mm)" > $out_file
+
+
+#get header line for every t4
+set line_numbers = `grep -n "volume.*total_t4" $in_file | sed "s/:.*//g"`
+
+#loop through every line number (transformation)
+@ count = 1 
+while ( $count <= $#line_numbers ) 
+
+	echo "Processing frame: $count"
+	
+	#get starting and end lines for t4
+	set line = $line_numbers[$count]
+	set start_line = `echo $line + 1 | bc`
+	set end_line = `echo $line + 4 | bc`
+	
+	#extract t4 from temp file
+	sed -n "${start_line},${end_line}p" 110406_TC33336_dti_xenc.4dfp.dat > temp_${count}t4
+	
+	#use t4_factor to get translations and rotations from t4
+	t4_factor temp_${count}t4 > temp_${count}factor
+	
+	#extract displacements and rotations from t4_factor
+	set dis = `grep "displacement" temp_${count}factor`
+	set rot = `grep "rotation" temp_${count}factor`
+	
+	#write out translations and rotations to output file
+	echo $count $dis[3] $dis[4] $dis[5] $rot[3] $rot[4] $rot[5] >> $out_file
+	
+	@ count++
+end
+
+rm temp_*t4 temp_*factor
