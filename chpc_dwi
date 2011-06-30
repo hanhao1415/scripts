@@ -197,6 +197,7 @@ foreach session ( $sessions )
 	echo 'export PATH=/export/4dfp/:${PATH}' >> ${session}.batch
 	echo "#Run processing script" >> ${session}.batch
 	echo "~/scripts/dwi_proc ${session}.params >& dwi_proc.log" >> ${session}.batch
+	echo "~/scripts/adrc_dti_qa $session_path" >> ${session}.batch
 	
 	#add session to qsub array
 	set qsubarray = ( $qsubarray $session )
