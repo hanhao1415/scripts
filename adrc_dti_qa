@@ -88,37 +88,22 @@ set outliers = `~/scripts/dti_motion_outliers.py ${session}_dti_xenc_motion.txt`
 cd ../fsldti
 
 echo "-> Estimating brain cropping"
-#link structural images
-ln -s ../Processing/${session}_t1_1.nii.gz ${session}_t1_1.nii.gz
-ln -s $FSLDIR/data/standard/MNI152_T1_1mm.nii.gz MNI152_T1_1mm.nii.gz
 
 #extract first frame of UNMASKED DTI
 $FSLDIR/bin/fslroi ../Processing/${session}_dti_xenc ${session}_dti_xenc_frame0 0 1
 
-#Register DTI to T1
-$FSLDIR/bin/flirt -in ${session}_dti_xenc_frame0 -ref ${session}_t1_1 -dof 6 -cost mutualinfo \
--nosearch -omat ${session}_dti_xenc_frame0_to_${session}_t1_1.mat 
-
-#Register T1 to MNI
-$FSLDIR/bin/flirt -in ${session}_t1_1 -ref MNI152_T1_1mm -omat ${session}_t1_1_to_MNI152_T1_1mm.mat 
-
-#Create DTI to MNI Image
-$FSLDIR/bin/convert_xfm -omat ${session}_dti_xenc_frame0_to_MNI152_T1_1mm.mat \
--concat ${session}_t1_1_to_MNI152_T1_1mm.mat ${session}_dti_xenc_frame0_to_${session}_t1_1.mat 	
-$FSLDIR/bin/flirt -in ${session}_dti_xenc_frame0 -ref MNI152_T1_1mm -applyxfm \
--init ${session}_dti_xenc_frame0_to_MNI152_T1_1mm.mat \
--out ${session}_dti_xenc_frame0_to_MNI152_T1_1mm 
+#Register DTI to ICBM T2 in MNI 152 Space
+$FSLDIR/bin/flirt -in ${session}_dti_xenc_frame0 -ref $FSLDIR/data/atlases/JHU/JHU-ICBM-T2-2mm \
+-cost mutualinfo -omat ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm.mat \
+-out ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm
 
 #Calculate volume within each MNI mask
 set mask_percents = ()
-foreach lobe ( cerebellum occipital parietal frontal )
-	#link lobe mask
-	ln -s ~/atlas/MNI-maxprob-thr25-1mm_${lobe}_mask.nii.gz \
-	MNI-maxprob-thr25-1mm_${lobe}_mask.nii.gz
+foreach lobe ( cerebellum occipital parietal frontal temporal )
 	#Calculate volume within lobe mask for non-zero voxels only
-	set volume = `$FSLDIR/bin/fslstats ${session}_dti_xenc_frame0_to_MNI152_T1_1mm \
-	-k MNI-maxprob-thr25-1mm_${lobe}_mask.nii.gz -V`
-	set mask_volume = `$FSLDIR/bin/fslstats MNI-maxprob-thr25-1mm_${lobe}_mask.nii.gz -V`
+	set volume = `$FSLDIR/bin/fslstats ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm \
+	-k ~/atlas/MNI-maxprob-thr25-2mm_${lobe}_mask.nii.gz -V`
+	set mask_volume = `$FSLDIR/bin/fslstats ~/atlas/MNI-maxprob-thr25-2mm_${lobe}_mask.nii.gz -V`
 	set mask_percent = `echo "scale=5; $volume[1] / $mask_volume[1]" | bc`	
 	set mask_percents = ( $mask_percents $mask_percent )
 end
@@ -130,11 +115,10 @@ end
 cd ../
 
 echo "-> Outputing QA stats"
-echo "'Bad Voxels','% Bad Voxels','Bad Encodes','% Bad Encodes','Edge Residual Error','Skeleton Residual Error','% Cerebellum Mask','% Occipital Mask','% Parietal Mask','% Frontal Volume','Frames with Translations >= 1','Frames with Rotations >= .5'" > ${session}_qc.txt
-echo "$bad_voxels[5],$bad_voxel_percent,$bad_encodes[4],$bad_encode_percent,$edge_mean,$skeleton_mean,$mask_percents[1],$mask_percents[2],$mask_percents[3],$mask_percents[4],$outliers[1],$outliers[2]" >> ${session}_qc.txt
+echo "'Bad Voxels','% Bad Voxels','Bad Encodes','% Bad Encodes','Edge Residual Error','Skeleton Residual Error','% Cerebellum Mask','% Occipital Mask','% Parietal Mask','% Frontal Volume','% Temporal Volume','Frames with Translations >= 1','Frames with Rotations >= .5'" > ${session}_qc.txt
+echo "$bad_voxels[5],$bad_voxel_percent,$bad_encodes[4],$bad_encode_percent,$edge_mean,$skeleton_mean,$mask_percents[1],$mask_percents[2],$mask_percents[3],$mask_percents[4],$mask_percents[5],$outliers[1],$outliers[2]" >> ${session}_qc.txt
 
-	
-	
+
 	
 	
 	

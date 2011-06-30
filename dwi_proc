@@ -139,9 +139,11 @@ endsw
 #setup the DiffVec file to use and the group string
 if ( $bmin == 0 ) then
 	set diffvec = "~/scripts/DiffVec_${bmax}_23dirplusB0.prm"
+	set fsl_root = "~/scripts/fsl_${bmax}_plusB0"
 	set group_string = "-g2,7,11,16 -g3,8,21 -g4,12,17 -g5,9,10,13,14,18,22 -g6,15,19,20,23,24"
 else
 	set diffvec = "~/scripts/DiffVec_${bmax}_23dirnoB0.prm"
+	set fsl_root = "~/scripts/fsl_${bmax}_noB0"
 	set group_string = "-g6,10,15 -g2,7,20 -g3,11,16 -g4,8,9,12,13,17,21 -g5,14,18,19,22,23"
 endif
 
@@ -290,6 +292,12 @@ end
 #remove mode calc temp files
 rm tmp*
 
+#run FSL tensor fit on 4dfp aligned data
+mkdir ../fsldti; cd ../fsldti
+dtifit -k ../Processing/${session}_dti_xenc -o ${session}_dti_xenc_fsl \
+-m ../Processing/${session}_dti_1_23_*_b0_brain_mask.nii -r ${fsl_root}.bvec \
+-b ${fsl_root}.bval --sse
+
 #gzip all the nifti files
-gzip *.nii
+gzip *.nii ../Processing/*.nii
 
