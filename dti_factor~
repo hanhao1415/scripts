@@ -30,6 +30,8 @@ set line_numbers = `grep -n "volume.*total_t4" $in_file | sed "s/:.*//g"`
 #loop through every line number (transformation)
 @ count = 1 
 while ( $count <= $#line_numbers ) 
+
+	echo "Processing frame: $count"
 	
 	#get starting and end lines for t4
 	set line = $line_numbers[$count]
