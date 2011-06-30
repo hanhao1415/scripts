@@ -70,14 +70,26 @@ while ( $count <= $#line_numbers )
 	#write out translations and rotations to output file
 	echo "$count $trans[3] $trans[4] $trans[5] $rot[3] $rot[4] $rot[5]" >> $out_file
 	
+	abs_trans = ( )
+	for i ( $trans[3] $trans[4] $trans[5] )
+		if ( $i < 0 ) set i = `echo "scale=5; $i * -1" | bc`
+		set abs_trans = ( $abs_trans $i )
+	end
+	
+	abs_rot = ( )
+	for i ( $rot[3] $rot[4] $rot[5] )
+		if ( $i < 0 ) set i = `echo "scale=5; $i * -1" | bc`
+		set abs_rot = ( $abs_rot $i )
+	end
+		
 	#test for outlier translations
 	if ( $?trans_thres == 0 ) then
-		if ( $trans[3] >= $trans_thres && $trans[4] >= $trans_thres && $trans[5] >= $trans_thres ) @ trans_outliers++
+		if ( $abs_trans[1] >= $trans_thres || $abs_trans[2] >= $trans_thres || $abs_trans[3] >= $trans_thres ) @ trans_outliers++
 	endif
 	
 	#test for outlier rotations
 	if ( $?rot_thres == 0 ) then
-		if ( $rot[3] >= $rot_thres && $rot[4] >= $rot_thres && $rot[5] >= $rot_thres ) @ rot_outliers++
+		if ( $abs_rot[1] >= $rot_thres || $abs_rot[2] >= $rot_thres || $abs_rot[3] >= $rot_thres ) @ rot_outliers++
 	endif
 	
 	rm temp_${count}factor temp_${count}t4
