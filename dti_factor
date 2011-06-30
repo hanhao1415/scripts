@@ -51,7 +51,9 @@ while ( $count <= $#line_numbers )
 	#write out translations and rotations to output file
 	echo $count $dis[3] $dis[4] $dis[5] $rot[3] $rot[4] $rot[5] >> $out_file
 	
+	rm temp_${count}t4 temp_${count}factor
+	
 	@ count++
 end
 
-rm temp_*t4 temp_*factor
+
