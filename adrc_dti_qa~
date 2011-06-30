@@ -8,10 +8,10 @@ if ( $#argv != 1 ) then
 	exit 0
 endif
 
-set session_path = $1
-set session = $session_path:t
+set path = $1
+set session = $path:t
 	
-cd $session_path
+cd $path
 
 echo "Processing session ${session}:"
 
