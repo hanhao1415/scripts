@@ -33,9 +33,9 @@ while ( $#argv > 0 )
 	set flag = $argv[1]; shift
 	switch ($flag)
 		case -t:
-			set trans_thres = $argv[1]; @ trans_outliers = 0; shift; breaksw;
+			set trans_thres = `echo "scale=4; $argv[1]" | bc`; @ trans_outliers = 0; shift; breaksw;
 		case -r:
-			set rot_thres = $argv[1]; @ rot_outliers = 0; shift; breaksw;
+			set rot_thres = `echo "scale=4; $argv[1]" | bc`; @ rot_outliers = 0; shift; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage"
 			exit 1
@@ -51,6 +51,8 @@ set line_numbers = `grep -n "volume.*total_t4" $in_file | sed "s/:.*//g"`
 #loop through every line number (transformation)
 @ count = 1 
 while ( $count <= $#line_numbers ) 
+
+	echo "Processing frame $count"
 	
 	#get starting and end lines for t4
 	set line = $line_numbers[$count]
@@ -58,44 +60,46 @@ while ( $count <= $#line_numbers )
 	set end_line = `echo $line + 4 | bc`
 	
 	#extract t4 to temp file
-	sed -n "${start_line},${end_line}p" $1 > temp_${count}t4
+	sed -n "${start_line},${end_line}p" $in_file > temp_${count}t4
 	
 	#use t4_factor to get translations and rotations from t4
 	t4_factor temp_${count}t4 > temp_${count}factor
 	
 	#extract transplacements and rotations from t4_factor
-	set trans = `grep "transplacement" temp_${count}factor`
+	set trans = `grep "displacement" temp_${count}factor`
 	set rot = `grep "rotation" temp_${count}factor`
 	
 	#write out translations and rotations to output file
 	echo "$count $trans[3] $trans[4] $trans[5] $rot[3] $rot[4] $rot[5]" >> $out_file
 	
-	abs_trans = ( )
-	for i ( $trans[3] $trans[4] $trans[5] )
-		if ( $i < 0 ) set i = `echo "scale=5; $i * -1" | bc`
+	set abs_trans = ( )
+	foreach i ( $trans[3] $trans[4] $trans[5] )	
+		if ( $i[0] < 0 ) @ i = `echo "scale=4; $i * -1" | bc`	
 		set abs_trans = ( $abs_trans $i )
 	end
 	
-	abs_rot = ( )
-	for i ( $rot[3] $rot[4] $rot[5] )
-		if ( $i < 0 ) set i = `echo "scale=5; $i * -1" | bc`
+	set abs_rot = ( )
+	foreach i ( $rot[3] $rot[4] $rot[5] )
+		if ( $i[0] < 0 ) @ i = `echo "scale=4; $i * -1" | bc`
 		set abs_rot = ( $abs_rot $i )
-	end
-		
+	end	
+	
 	#test for outlier translations
-	if ( $?trans_thres == 0 ) then
+	if ( $?trans_thres == 1 ) then
+		echo $abs_trans[1] $trans_thres
 		if ( $abs_trans[1] >= $trans_thres || $abs_trans[2] >= $trans_thres || $abs_trans[3] >= $trans_thres ) @ trans_outliers++
 	endif
 	
 	#test for outlier rotations
-	if ( $?rot_thres == 0 ) then
+	if ( $?rot_thres == 1 ) then
 		if ( $abs_rot[1] >= $rot_thres || $abs_rot[2] >= $rot_thres || $abs_rot[3] >= $rot_thres ) @ rot_outliers++
 	endif
 	
 	rm temp_${count}factor temp_${count}t4
+
+	@ count++
 end
 
 #print out outliers if user asked
-if ( $?trans_thres == 0 ) echo "Translations greater than $trans_thres: $trans_outliers"
-if ( $?rot_thres == 0 ) echo "Rotations greater than $rot_thres: $rot_outliers"
-
+if ( $?trans_thres == 1 ) echo "Translations greater than ${trans_thres}: $trans_outliers"
+if ( $?rot_thres == 1 ) echo "Rotations greater than ${rot_thres}: $rot_outliers"
