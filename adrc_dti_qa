@@ -92,8 +92,8 @@ echo "-> Estimating brain cropping"
 #extract first frame of UNMASKED DTI
 $FSLDIR/bin/fslroi ../Processing/${session}_dti_xenc ${session}_dti_xenc_frame0 0 1
 
-#Register DTI to ICBM T2 in MNI 152 Space
-$FSLDIR/bin/flirt -in ${session}_dti_xenc_frame0 -ref $FSLDIR/data/atlases/JHU/JHU-ICBM-T2-2mm \
+#Register DTI to ICBM DWI in MNI 152 Space
+$FSLDIR/bin/flirt -in ${session}_dti_xenc_frame0 -ref $FSLDIR/data/atlases/JHU/JHU-ICBM-DWI-2mm \
 -cost mutualinfo -omat ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm.mat \
 -out ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm
 
