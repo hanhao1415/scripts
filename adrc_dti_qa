@@ -94,20 +94,19 @@ $FSLDIR/bin/fslroi ../Processing/${session}_dti_xenc ${session}_dti_xenc_frame0 
 
 #Register DTI to ICBM DWI in MNI 152 Space
 $FSLDIR/bin/flirt -in ${session}_dti_xenc_frame0 -ref $FSLDIR/data/atlases/JHU/JHU-ICBM-DWI-2mm \
--cost mutualinfo -omat ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm.mat \
--out ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm
+-cost mutualinfo -omat ${session}_dti_xenc_frame0_to_JHU-ICBM-DWI-2mm.mat \
+-out ${session}_dti_xenc_frame0_to_JHU-ICBM-DWI-2mm
 
 #Calculate volume within each MNI mask
 set mask_percents = ()
 foreach lobe ( cerebellum occipital parietal frontal temporal )
 	#Calculate volume within lobe mask for non-zero voxels only
-	set volume = `$FSLDIR/bin/fslstats ${session}_dti_xenc_frame0_to_JHU-ICBM-T2-2mm \
+	set volume = `$FSLDIR/bin/fslstats ${session}_dti_xenc_frame0_to_JHU-ICBM-DWI-2mm \
 	-k ~/atlas/MNI-maxprob-thr25-2mm_${lobe}_mask.nii.gz -V`
 	set mask_volume = `$FSLDIR/bin/fslstats ~/atlas/MNI-maxprob-thr25-2mm_${lobe}_mask.nii.gz -V`
 	set mask_percent = `echo "scale=5; $volume[1] / $mask_volume[1]" | bc`	
 	set mask_percents = ( $mask_percents $mask_percent )
 end
-
 
 ########
 #Output#
