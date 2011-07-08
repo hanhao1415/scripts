@@ -132,7 +132,7 @@ while ( $#argv > 0 )
 		case -vmem:
 			set vmem = $argv[1]; shift; breaksw;
 		case -wtime:
-			set wtime = "$argv[1]:00:00" shift; breaksw;
+			set wtime = $argv[1]":00:00"; shift; breaksw;
 		case -sub:
 			set sub = 1; breaksw;
 		case -nohippo:
