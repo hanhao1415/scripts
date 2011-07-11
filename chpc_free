@@ -204,8 +204,7 @@ foreach session ( $sessions )
 	
 	#Setup search strings
 	if ( $quality > 1 ) then
-		set t1_search = "t1_mpr_1mm_p2_pos50[[:space:]][[:space:]][[:space:]]usable\|"\
-		"t1_mpr_1mm_p2_pos50.*questionable"
+		set t1_search = "t1_mpr_1mm_p2_pos50[[:space:]][[:space:]][[:space:]]usable\|t1_mpr_1mm_p2_pos50.*questionable"
 		set mp_search = "MPRAGE.*[[:space:]][[:space:]][[:space:]]usable\|MPRAGE.*questionable"
 		set quality_string = "usable,questionable"
 	else
@@ -247,7 +246,8 @@ foreach session ( $sessions )
 			grep -i $mp_search $readfile | grep -i "GRAPPA" | grep -qi "repeat"
 			if ( $? == 0 ) then
 				set arc_string = ( $arc_string "-r MPRAGE+GRAPPA2+repeat" )
-			endif		
+			endif
+		endif		
 	else
 		set arc_string = "-r t1_mpr_1mm_p2_pos50"
 		set mp_name = "t1_mpr_1mm_p2_pos50"
@@ -306,11 +306,9 @@ foreach session ( $sessions )
 				@ count = 1
 				while ( $count <= $mp_numbers )
 					if ( $quality > 1 ) then
-						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]"\
-						"usable\|${mp_name}.*questionable" $readfile | sed -n "${count}p"`
+						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]usable\|${mp_name}.*questionable" $readfile | sed -n "${count}p"`
 					else
-						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]"\
-						"usable" $readfile | sed -n "${count}p"`
+						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]usable" $readfile | sed -n "${count}p"`
 					endif
 					set root_image = `ls ${root[1]}* | head -1`
 					set run = `echo $root_image | grep -o '\-[0-9]\-' | sed 's/-//g'`
