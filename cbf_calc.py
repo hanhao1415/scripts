@@ -64,6 +64,11 @@ except (IOError,nib.spatialimages.ImageFileError):
 	sys.exit()
 m0_data = m0.get_data()
 
+#Check to see if the image dimensions are the same
+if m0_data.shape[0:2] != mask_data.shape[0:2] or m0_data.shape[0:2] != perf_data.shape[0:2]:
+	print 'Image dimension mismatch. Check input data'
+	sys.exit()
+
 #Create 3D and 4D masked arrays
 mask_array_3d = ( mask_data - 1 ) * -1 #have to invert, as numpy masks out 1s and includes 0s
 mask_array_4d = np.empty_like(perf_data)
@@ -112,6 +117,9 @@ for frame in range(cbf_masked.shape[3]):
 	frame_avg = np.ma.average(cbf_masked[:,:,:,frame])
 	if frame_avg >= up_stdev_thresh or frame_avg <= low_stdev_thresh:
 		outliers.append(frame)
+if len(outliers) == cbf_masked.shape[3]:
+	print 'Number of outliers is equal to number of frames. Raise threshold and/or check data.'
+	sys.exit()
 cbf_masked = np.delete(cbf_masked,outliers,axis=3)
 
 #Write out 3d filtered cbf average
