@@ -89,27 +89,27 @@ for frame in range(cbf_masked.shape[3]):
 	cbf_masked[:,:,:,frame] = cbf_masked[:,:,:,frame] + \
 						      np.nan_to_num((perf_data[:,:,:,frame]*scale_array/m0_data))
 
+#Create a temporal standard deviation image for calculated cbf
+cbf_stdev_masked = np.std(cbf_masked,axis=3)
+
 #If user wants, output unfiltered cbf images
 if args.unfilt == 1:
 	#Write out unfiltered 3d cbf average
 	cbf_unfilt_avg_data = np.ma.average(cbf_masked,axis=3)
 	cbf_unfilt_avg = nib.Nifti1Image(cbf_unfilt_avg_data,perf.get_affine())
 	cbf_unfilt_avg.to_filename(args.outroot[0] + '_cbf_unfilt_avg.nii.gz')
-
+	
+	#Write out unfiltered cbf stdev
+	cbf_unfilt_stdev = nib.Nifti1Image(cbf_stdev_masked,perf.get_affine())
+	cbf_unfilt_stdev.to_filename(args.outroot[0] + '_cbf_unfilt_stdev.nii.gz')
+	
 	#Write out unfiltered 4d cbf
 	if args.out4d == 1:
 		cbf_unfilt = nib.Nifti1Image(cbf_masked,perf.get_affine())
 		cbf_unfilt.to_filename(args.outroot[0] + '_cbf_unfilt.nii.gz')
 
-#Create a temporal standard deviation image
-cbf_stdev_masked = np.std(cbf_masked,axis=3)
-cbf_stdev = nib.Nifti1Image(cbf_stdev_masked,perf.get_affine())
-cbf_stdev.to_filename(args.outroot[0] + '_cbf_stdev.nii.gz')
-
-#Find the average stdev within the brain
-mean_stdev = np.ma.average(cbf_stdev_masked)
-
 #Identify cbf outliers
+mean_stdev = np.ma.average(cbf_stdev_masked)
 up_stdev_thresh = mean_stdev + (mean_stdev * args.thresh[0])
 low_stdev_thresh = mean_stdev - (mean_stdev * args.thresh[0])
 outliers = []
@@ -127,7 +127,12 @@ cbf_filt_avg_data = np.ma.average(cbf_masked,axis=3)
 cbf_filt_avg = nib.Nifti1Image(cbf_filt_avg_data,perf.get_affine())
 cbf_filt_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
 
-#If user wants, output filtered, 4D cbf image
+#Get filtered standard deviation and write that out
+cbf_stdev_masked = np.std(cbf_masked,axis=3)
+cbf_stdev = nib.Nifti1Image(cbf_stdev_masked,perf.get_affine())
+cbf_stdev.to_filename(args.outroot[0] + '_cbf_stdev.nii.gz')
+
+#If user wants, output filtered 4D cbf image
 if args.out4d == 1:
 	cbf_filt_avg = nib.Nifti1Image(cbf_masked,perf.get_affine())
 	cbf_filt_avg.to_filename(args.outroot[0] + '_cbf.nii.gz')
