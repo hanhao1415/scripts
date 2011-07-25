@@ -1,5 +1,33 @@
 #!/usr/bin/python
 
+"""
+cbf_calc.py: Python script to calculate CBF from perfusion images.
+
+Uses the following equation from Wang et. al 2003 JMRI:
+
+f = [ 6000 * 1000 * DeltaM * lambda ] / [ 2 * M0 * TI1 * exp(-TI2 / T1a) * qTI ]
+
+Where:
+
+DeltaM    = Perfusion between tag and control -> calculated from data
+lambda    = blood/tissue water partition coefficient -> set constant
+M0        = equilibrium brain/tissue magnetization -> acquired voxelwise
+TI1       = inversion time one, labeltime -> sequence dependent
+TI2       = inversion time two -> sequence dependent, varies by slice
+          = T11 + w
+          = TI1 + w + ( slicetime * slice number )
+          = TI2 + (slicetime * slice number )
+w         = delay time between saturation and excitation pulses -> sequence dependent
+          = TI2 - TI1
+slicetime = time to acquire each slice -> sequence dependent
+          = (minTR - TI2) / # of slices
+minTR     = minimum TR -> sequence dependent
+qTI       = correction for difference between blood and tissue T1 and venous outflow -> set constant
+
+Note: qTI was not used in the Wang 2003 paper. See Warmuth et. al 2003 Radiology.
+
+"""
+
 #Import system modules
 import sys
 import argparse
@@ -46,7 +74,6 @@ try:
 except (IOError,nib.spatialimages.ImageFileError):
 	print 'Cannot find perf image at %s'%(args.perf[0])
 	sys.exit()
-perf_data = perf.get_data()
 
 #Load mask
 try:
@@ -54,7 +81,6 @@ try:
 except (IOError,nib.spatialimages.ImageFileError):
 	print 'Cannot find mask image at %s'%(args.mask[0])
 	sys.exit()
-mask_data = mask.get_data()
 
 #Load m0
 try:
@@ -62,12 +88,16 @@ try:
 except (IOError,nib.spatialimages.ImageFileError):
 	print 'Cannot find m0 image at %s'%(args.m0[0])
 	sys.exit()
-m0_data = m0.get_data()
 
-#Check to see if the image dimensions are the same
-if m0_data.shape[0:2] != mask_data.shape[0:2] or m0_data.shape[0:2] != perf_data.shape[0:2]:
-	print 'Image dimension mismatch. Check input data'
+#Check to see images have same dimensions
+if mask.get_shape() != m0.get_shape() or mask.get_shape() != perf.get_shape()[0:3]:
+	print 'Mismatch in images dimensions. Check data.'
 	sys.exit()
+
+#Get image data
+perf_data = perf.get_data()
+mask_data = mask.get_data()
+m0_data = m0.get_data()
 
 #Create 3D and 4D masked arrays
 mask_array_3d = ( mask_data - 1 ) * -1 #have to invert, as numpy masks out 1s and includes 0s
