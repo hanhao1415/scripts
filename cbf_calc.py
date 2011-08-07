@@ -107,11 +107,17 @@ mask_array_4d[:,:,:,:] = np.expand_dims(mask_array_3d,axis=3)
 #Create a 3D matrix with a different scale value for each slice
 sliceTime = (args.minTR[0] - args.TI2[0]) / m0_data.shape[2]
 scale_array = np.empty_like(m0_data)
-for slice in range(m0_data.shape[2]):
-    acqTime = args.TI2[0] + (slice * sliceTime)
-    scale = (6000.0 * 1000.0 * args.lmbda[0]) / ( 2.0 * np.exp( -acqTime / args.T1a[0]) \
-    		* args.TI1[0] * args.alp[0] * args.qTI[0])
-    scale_array[:,:,slice] = scale
+
+#Here we only have ten slice times due to interleaved runs
+for slice in range(m0_data.shape[2]/2):
+	acqTime = args.TI2[0] + (slice * sliceTime)
+	scale = (6000.0 * 1000.0 * args.lmbda[0]) / ( 2.0 * np.exp( -acqTime / args.T1a[0]) \
+			 * args.TI1[0] * args.alp[0] * args.qTI[0])
+	scale_array[:,:,slice*2] = scale
+	scale_array[:,:,slice*2+1] = scale
+
+test = nib.Nifti1Image(scale_array,perf.get_affine())
+test.to_filename(args.outroot[0] + '_test.nii.gz')
     
 #Calculate cbf
 cbf_masked = np.ma.array(np.zeros_like(perf_data),mask=mask_array_4d)
@@ -164,8 +170,8 @@ cbf_stdev.to_filename(args.outroot[0] + '_cbf_stdev.nii.gz')
 
 #If user wants, output filtered 4D cbf image
 if args.out4d == 1:
-	cbf_filt_avg = nib.Nifti1Image(cbf_masked,perf.get_affine())
-	cbf_filt_avg.to_filename(args.outroot[0] + '_cbf.nii.gz')
+	cbf_filt = nib.Nifti1Image(cbf_masked,perf.get_affine())
+	cbf_filt.to_filename(args.outroot[0] + '_cbf.nii.gz')
 
 
 
