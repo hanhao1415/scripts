@@ -105,12 +105,12 @@ for dim_3 in range(perf.shape[2]):
 				x_south = dim_1 + step_size + 1;
 				y_west = dim_2 - step_size;
 				y_east = dim_2 + step_size + 1;
-
+	
 				#Fix step sizes if they go over matrix boundries
-				if x_south > x_dim - 1: x_south = x_dim
-				if x_north < 0: x_north = 1
-				if y_east > y_dim - 1: y_east = y_dim
-				if y_west < 0: y_west = 1
+				if x_north < 0: x_north = 0
+				if x_south > x_dim: x_south = x_dim 
+				if y_west < 0: y_west = 0
+				if y_east > y_dim: y_east = y_dim
 		
 				#Setup regression vectors and matricies
 				mcsf_kernel = csf_masked[x_north:x_south,y_west:y_east,dim_3].flatten()
