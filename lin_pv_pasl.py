@@ -153,7 +153,7 @@ for dim_3 in range(perf.shape[2]):
 												  	  dim_3,dim_4].flatten()
 							[dgm_pvc_data[dim_1,dim_2,dim_3,dim_4],
 							 dwm_pvc_data[dim_1,dim_2,dim_3,dim_4]] = np.dot(dm_reg_inv,perf_kernel)
-	print 'Processing slice %s'%(dim_3+1)
+	print 'Finished processing slice %s'%(dim_3+1)
 
 
 #Write out some results
