@@ -116,9 +116,6 @@ for slice in range(m0_data.shape[2]/2):
 	scale_array[:,:,slice*2] = scale
 	scale_array[:,:,slice*2+1] = scale
 
-test = nib.Nifti1Image(scale_array,perf.get_affine())
-test.to_filename(args.outroot[0] + '_test.nii.gz')
-    
 #Calculate cbf
 cbf_masked = np.ma.array(np.zeros_like(perf_data),mask=mask_array_4d)
 for frame in range(cbf_masked.shape[3]):
