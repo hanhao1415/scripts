@@ -1,5 +1,15 @@
 #!/usr/bin/python
 
+"""
+
+lin_pv_pasl.py: Python script to partial volume correct PASL images using a regression algorithm
+
+Method taken from Asllani et. al Magnetic Resoance in Medicine 2008
+
+Tyler Blazey, Summer 20011
+
+"""
+
 #import system modules
 import sys
 import argparse
@@ -8,21 +18,22 @@ import argparse
 import numpy as np
 import nibabel as nib
 
-
 #Parse arguments
 arg_parse = argparse.ArgumentParser(description='Linear regression technique for ASL partial \
 									volume correction')
 #Positional arguments
 arg_parse.add_argument('perf',help='Path to nifti perfusion image',nargs=1)
 arg_parse.add_argument('m0',help='Path to nifti m0 image',nargs=1)
-arg_parse.add_argument('mask',help='Path to nifti brain mask',nargs=1)
+arg_parse.add_argument('mask',help='Path to binary nifti brain mask',nargs=1)
 arg_parse.add_argument('csf_pvm',help='Path to csf matter partial volume map',nargs=1)
 arg_parse.add_argument('gm_pvm',help='Path to gray matter partial volume map',nargs=1)
 arg_parse.add_argument('wm_pvm',help='Path to white matter partial volume map',nargs=1)
 arg_parse.add_argument('outroot',help='Root for outputed files',nargs=1)
 #Optional arguments
-arg_parse.add_argument('-kernel',help='Size of regression kernel',type=float,
+arg_parse.add_argument('-kernel',help='Size of regression kernel. Default is 5',type=float,
 				      default=[5.0],nargs=1)
+arg_parse.add_argument('-nocsf',help='Assume that there is no perfusion in CSF.',
+					  action='store_const',const=[1],default=[0])
 args = arg_parse.parse_args()
 
 #Load Images
@@ -79,6 +90,8 @@ wm_masked = np.ma.array(wm_pvmap_data,mask=mask_array)
 mcsf_pvc_data = np.ones_like(m0_data)
 mgm_pvc_data = np.ones_like(m0_data)
 mwm_pvc_data = np.ones_like(m0_data)
+if args.nocsf[0] == 0:
+	dcsf_pvc_data = np.ones_like(perf_data)
 dgm_pvc_data = np.ones_like(perf_data)
 dwm_pvc_data = np.ones_like(perf_data)
 
@@ -93,9 +106,15 @@ for dim_3 in range(perf.shape[2]):
 			
 			#If voxel is outside of brain mask, set that voxel to zero for all maps
 			if mask_array[dim_1,dim_2,dim_3] == 1:
-				[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
-				mwm_pvc_data[dim_1,dim_2,dim_3],dgm_pvc_data[dim_1,dim_2,dim_3,:],
-				dwm_pvc_data[dim_1,dim_2,dim_3,:]] = [0,0,0,0,0]
+				if args.nocsf[0] == 0:
+					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
+					mwm_pvc_data[dim_1,dim_2,dim_3],dcsf_pvc_data[dim_1,dim_2,dim_3,:],
+					dgm_pvc_data[dim_1,dim_2,dim_3,:],dwm_pvc_data[dim_1,dim_2,dim_3,:]] = \
+					[0,0,0,0,0,0]
+				else:
+					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
+					mwm_pvc_data[dim_1,dim_2,dim_3],dgm_pvc_data[dim_1,dim_2,dim_3,:],
+					dwm_pvc_data[dim_1,dim_2,dim_3,:]] = [0,0,0,0,0]
 			
 			#Check to see if there is enough values for a regression
 			else:
@@ -117,32 +136,39 @@ for dim_3 in range(perf.shape[2]):
 				mgm_kernel = np.ma.compressed(gm_masked[x_north:x_south,y_west:y_east,dim_3])
 				mwm_kernel = np.ma.compressed(wm_masked[x_north:x_south,y_west:y_east,dim_3])
 				m_reg = np.column_stack((mcsf_kernel,mgm_kernel,mwm_kernel))
-				dm_reg = np.column_stack((mgm_kernel,mwm_kernel))
+				if args.nocsf[0] == 0:
+					dm_reg = np.column_stack((mcsf_kernel,mgm_kernel,mwm_kernel))
+				else:
+					dm_reg = np.column_stack((mgm_kernel,mwm_kernel))
 				
 				#If there isn't at least three m_reg values greater than zero
 				#set both dm and m voxels to zero
 				if np.sum((m_reg>0)) < 3:
-					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
-					mwm_pvc_data[dim_1,dim_2,dim_3],dgm_pvc_data[dim_1,dim_2,dim_3,:],
-					dwm_pvc_data[dim_1,dim_2,dim_3,:]] = [0,0,0,0,0]
+					if args.nocsf[0] == 0:
+						[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
+						mwm_pvc_data[dim_1,dim_2,dim_3],dcsf_pvc_data[dim_1,dim_2,dim_3,:],
+						dgm_pvc_data[dim_1,dim_2,dim_3,:],dwm_pvc_data[dim_1,dim_2,dim_3,:]] = \
+						[0,0,0,0,0,0]
+					else:
+						[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
+						mwm_pvc_data[dim_1,dim_2,dim_3],dgm_pvc_data[dim_1,dim_2,dim_3,:],
+						dwm_pvc_data[dim_1,dim_2,dim_3,:]] = [0,0,0,0,0]
 				#Otherwise run a regression
 				else:
-					#Get the pseudoinverse
+					#Get the pseudoinverse for m0
 					m_reg_inv = np.linalg.pinv(m_reg)
 					
 					#Get the m0 values and run a regression with them
 					m0_kernel = np.ma.compressed(m0_masked[x_north:x_south,y_west:y_east,dim_3])
 					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
 					mwm_pvc_data[dim_1,dim_2,dim_3]] = np.dot(m_reg_inv,m0_kernel)
-				
-					#If there isn't a least three dm_reg values greater than zero, 
-					#set dm voxels to zero
-					if np.sum((dm_reg>0)) < 3:
-						[dgm_pvc_data[dim_1,dim_2,dim_3,:],
-						 dwm_pvc_data[dim_1,dim_2,dim_3,:]] = [0,0]
-					#Otherwise run a regression
+					
+					if args.nocsf[0] == 1 and np.sum((dm_reg>0)) < 3:
+						[dgm_pvc_data[dim_1,dim_2,dim_3,:],dwm_pvc_data[dim_1,dim_2,dim_3,:]] = \
+						[0,0]
+					
 					else:
-						#Get the pseudoinverse
+						#Get the pseudoinverse for perfusion
 						dm_reg_inv = np.linalg.pinv(dm_reg)
 					
 						#Loop through every perf dimension
@@ -150,19 +176,30 @@ for dim_3 in range(perf.shape[2]):
 						
 							#Get the perf values for each dim4 and run a regression with them
 							perf_kernel = np.ma.compressed(perf_masked[x_north:x_south,
-														   y_west:y_east,dim_3,dim_4])
-							[dgm_pvc_data[dim_1,dim_2,dim_3,dim_4],
-							 dwm_pvc_data[dim_1,dim_2,dim_3,dim_4]] = np.dot(dm_reg_inv,perf_kernel)
+													   	   y_west:y_east,dim_3,dim_4])
+						
+							if args.nocsf[0] == 0:
+								[dcsf_pvc_data[dim_1,dim_2,dim_3,:],
+								dgm_pvc_data[dim_1,dim_2,dim_3,dim_4],
+								dwm_pvc_data[dim_1,dim_2,dim_3,dim_4]] = \
+								np.dot(dm_reg_inv,perf_kernel)
+							else:
+								[dgm_pvc_data[dim_1,dim_2,dim_3,dim_4],
+								dwm_pvc_data[dim_1,dim_2,dim_3,dim_4]] = \
+								np.dot(dm_reg_inv,perf_kernel)
 	print 'Finished processing slice %s'%(dim_3+1)
 
 
 #Write out some results
+mcsf_pv = nib.Nifti1Image(mcsf_pvc_data,m0.get_affine())
+mcsf_pv.to_filename(args.outroot[0] + '_mcsf.nii.gz')
 mgm_pvc = nib.Nifti1Image(mgm_pvc_data,m0.get_affine())
 mgm_pvc.to_filename(args.outroot[0] + '_mgm.nii.gz')
 mwm_pvc = nib.Nifti1Image(mwm_pvc_data,m0.get_affine())
 mwm_pvc.to_filename(args.outroot[0] + '_mwm.nii.gz')
-mcsf_pv = nib.Nifti1Image(mcsf_pvc_data,m0.get_affine())
-mcsf_pv.to_filename(args.outroot[0] + '_mcsf.nii.gz')
+if args.nocsf[0] == 0:
+	dcsf_pvc = nib.Nifti1Image(dcsf_pvc_data,perf.get_affine())
+	dcsf_pvc.to_filename(args.outroot[0] + '_dcsf.nii.gz')
 dgm_pvc = nib.Nifti1Image(dgm_pvc_data,perf.get_affine())
 dgm_pvc.to_filename(args.outroot[0] + '_dgm.nii.gz')
 dwm_pvc = nib.Nifti1Image(dwm_pvc_data,perf.get_affine())
