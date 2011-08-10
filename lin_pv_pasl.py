@@ -112,10 +112,10 @@ for dim_3 in range(perf.shape[2]):
 				if y_west < 0: y_west = 0
 				if y_east > y_dim: y_east = y_dim
 		
-				#Setup regression vectors and matricies
-				mcsf_kernel = csf_masked[x_north:x_south,y_west:y_east,dim_3].flatten()
-				mgm_kernel = gm_masked[x_north:x_south,y_west:y_east,dim_3].flatten()
-				mwm_kernel = wm_masked[x_north:x_south,y_west:y_east,dim_3].flatten()
+				#Setup regression vectors and matricies with non-masked data
+				mcsf_kernel = np.ma.compressed(csf_masked[x_north:x_south,y_west:y_east,dim_3])
+				mgm_kernel = np.ma.compressed(gm_masked[x_north:x_south,y_west:y_east,dim_3])
+				mwm_kernel = np.ma.compressed(wm_masked[x_north:x_south,y_west:y_east,dim_3])
 				m_reg = np.column_stack((mcsf_kernel,mgm_kernel,mwm_kernel))
 				dm_reg = np.column_stack((mgm_kernel,mwm_kernel))
 				
@@ -131,7 +131,7 @@ for dim_3 in range(perf.shape[2]):
 					m_reg_inv = np.linalg.pinv(m_reg)
 					
 					#Get the m0 values and run a regression with them
-					m0_kernel = m0_masked[x_north:x_south,y_west:y_east,dim_3].flatten()
+					m0_kernel = np.ma.compressed(m0_masked[x_north:x_south,y_west:y_east,dim_3])
 					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
 					mwm_pvc_data[dim_1,dim_2,dim_3]] = np.dot(m_reg_inv,m0_kernel)
 				
@@ -149,8 +149,8 @@ for dim_3 in range(perf.shape[2]):
 						for dim_4 in range(perf.shape[3]):
 						
 							#Get the perf values for each dim4 and run a regression with them
-							perf_kernel = perf_masked[x_north:x_south,y_west:y_east,
-												  	  dim_3,dim_4].flatten()
+							perf_kernel = np.ma.compressed(perf_masked[x_north:x_south,
+														   y_west:y_east,dim_3,dim_4])
 							[dgm_pvc_data[dim_1,dim_2,dim_3,dim_4],
 							 dwm_pvc_data[dim_1,dim_2,dim_3,dim_4]] = np.dot(dm_reg_inv,perf_kernel)
 	print 'Finished processing slice %s'%(dim_3+1)
