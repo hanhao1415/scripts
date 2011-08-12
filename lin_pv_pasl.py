@@ -6,7 +6,7 @@ lin_pv_pasl.py: Python script to partial volume correct PASL images using a regr
 
 Method taken from Asllani et. al Magnetic Resoance in Medicine 2008
 
-Tyler Blazey, Summer 20011
+Tyler Blazey, Summer 2011
 
 """
 
@@ -25,9 +25,9 @@ arg_parse = argparse.ArgumentParser(description='Linear regression technique for
 arg_parse.add_argument('perf',help='Path to nifti perfusion image',nargs=1)
 arg_parse.add_argument('m0',help='Path to nifti m0 image',nargs=1)
 arg_parse.add_argument('mask',help='Path to binary nifti brain mask',nargs=1)
-arg_parse.add_argument('csf_pvm',help='Path to csf matter partial volume map',nargs=1)
-arg_parse.add_argument('gm_pvm',help='Path to gray matter partial volume map',nargs=1)
-arg_parse.add_argument('wm_pvm',help='Path to white matter partial volume map',nargs=1)
+arg_parse.add_argument('csf_pbmap',help='Path to csf matter probability map',nargs=1)
+arg_parse.add_argument('gm_pbmap',help='Path to gray matter probability map',nargs=1)
+arg_parse.add_argument('wm_pbmap',help='Path to white matter probability map',nargs=1)
 arg_parse.add_argument('outroot',help='Root for outputed files',nargs=1)
 #Optional arguments
 arg_parse.add_argument('-kernel',help='Size of regression kernel. Default is 5',type=float,
@@ -40,39 +40,49 @@ args = arg_parse.parse_args()
 try:
 	perf = nib.load(args.perf[0])
 except (IOError,nib.spatialimages.ImageFileError):
-	print 'Error perf'
+	print 'Error loading perfusion image'
 	sys.exit()
-perf_data = perf.get_data()
 try:
 	m0 = nib.load(args.m0[0])
 except (IOError,nib.spatialimages.ImageFileError):
-	print 'Error m0'
+	print 'Error loading m0 image'
 	sys.exit()
-m0_data = m0.get_data()
 try: 
 	brain_mask = nib.load(args.mask[0])
 except (IOError,nib.spatialimages.ImageFileError):
-	print 'Error brainmask'
+	print 'Error loading brainmask image'
 	sys.exit()
+try:
+	csf_pbmap = nib.load(args.csf_pbmap[0])
+except (IOError,nib.spatialimages.ImageFileError):
+	print 'Error loading csf probability map'
+	sys.exit()
+try:
+	gm_pbmap = nib.load(args.gm_pbmap[0])
+except (IOError,nib.spatialimages.ImageFileError):
+	print 'Error loading gray probability map'
+	sys.exit()
+try:
+	wm_pbmap = nib.load(args.wm_pbmap[0])
+except (IOError,nib.spatialimages.ImageFileError):
+	print 'Error loading white matter probability map'
+	sys.exit()
+
+#Check to see images have same dimensions
+if brain_mask.get_shape() != m0.get_shape() or brain_mask.get_shape() != perf.get_shape()[0:3] or \
+		brain_mask.get_shape() != csf_pbmap.get_shape() or \
+		brain_mask.get_shape() != gm_pbmap.get_shape() or \
+		brain_mask.get_shape() != wm_pbmap.get_shape():
+	print 'Mismatch in images dimensions. Check data.'
+	sys.exit()
+
+#Load the image data
+perf_data = perf.get_data()
+m0_data = m0.get_data()
 brain_mask_data = brain_mask.get_data()
-try:
-	csf_pvmap = nib.load(args.csf_pvm[0])
-except (IOError,nib.spatialimages.ImageFileError):
-	print 'Error csf'
-	sys.exit()
-csf_pvmap_data = csf_pvmap.get_data()
-try:
-	gm_pvmap = nib.load(args.gm_pvm[0])
-except (IOError,nib.spatialimages.ImageFileError):
-	print 'Error gray'
-	sys.exit()
-gm_pvmap_data = gm_pvmap.get_data()
-try:
-	wm_pvmap = nib.load(args.wm_pvm[0])
-except (IOError,nib.spatialimages.ImageFileError):
-	print 'Error for wm'
-	sys.exit()
-wm_pvmap_data = wm_pvmap.get_data()
+csf_pbmap_data = csf_pbmap.get_data()
+gm_pbmap_data = gm_pbmap.get_data()
+wm_pbmap_data = wm_pbmap.get_data()
 
 #Create masking arrays
 mask_array = (brain_mask_data - 1) * - 1
@@ -82,9 +92,9 @@ mask_array_4d[:,:,:,:] = np.expand_dims(mask_array,axis=3)
 #Setup masked arrays
 m0_masked = np.ma.array(m0_data,mask=mask_array)
 perf_masked = np.ma.array(perf_data,mask=mask_array_4d)
-csf_masked = np.ma.array(csf_pvmap_data,mask=mask_array)
-gm_masked = np.ma.array(gm_pvmap_data,mask=mask_array)
-wm_masked = np.ma.array(wm_pvmap_data,mask=mask_array)
+csf_masked = np.ma.array(csf_pbmap_data,mask=mask_array)
+gm_masked = np.ma.array(gm_pbmap_data,mask=mask_array)
+wm_masked = np.ma.array(wm_pbmap_data,mask=mask_array)
 	
 #Setup empy arrays
 mcsf_pvc_data = np.ones_like(m0_data)
