@@ -26,6 +26,8 @@ qTI       = correction for difference between blood and tissue T1 and venous out
 
 Note: qTI was not used in the Wang 2003 paper. See Warmuth et. al 2003 Radiology.
 
+Tyler Blazey, Summer 2011.
+
 """
 
 #Import system modules
@@ -38,11 +40,11 @@ import nibabel as nib
 np.seterr(all='ignore')
 
 #Parse arguments
-arg_parse = argparse.ArgumentParser(description='Calculate CBF from ASL perfusion images')
+arg_parse = argparse.ArgumentParser(description='Calculate CBF from PASL perfusion images')
 #Positional arguments
 arg_parse.add_argument('perf',help='Path to nifti perfusion image',nargs=1)
 arg_parse.add_argument('m0',help='Path to nifti m0 image',nargs=1)
-arg_parse.add_argument('mask',help='Path to nifti brain mask',nargs=1)
+arg_parse.add_argument('mask',help='Path to binary nifti brain mask',nargs=1)
 arg_parse.add_argument('outroot',help='Root for outputed files',nargs=1)
 #Optional arguments
 arg_parse.add_argument('-minTR',help='Minimum TR (ms). Default is 2260.5',type=float,
