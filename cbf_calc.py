@@ -61,8 +61,8 @@ arg_parse.add_argument('-qTI',help='Correction factor for difference between blo
 					  venous outflow. Default is 0.85',type=float,default=[0.85],nargs=1)
 arg_parse.add_argument('-T1a',help='Longitudinal relxation time of blood (ms). Default is 1664.0',
 					  type=float,default=[1664.0],nargs=1)
-arg_parse.add_argument('-thresh',help='Standard deviation threshold for outliers. Default is 2',
-					  type=float,default=[2.0],nargs=1)
+arg_parse.add_argument('-thresh',help='Standard deviation threshold for outliers. Default is 3',
+					  type=float,default=[3.0],nargs=1)
 arg_parse.add_argument('-unfilt',action='store_const',const=1,help='Output unfiltered CBF data.\
 					  Filtering refers to removal of 3d volumes whose CBF exceeds the standard \
 					  deviation by value specifed by -thresh.')
@@ -152,10 +152,10 @@ for frame in range(cbf_masked.shape[3]):
 	frame_avg = np.ma.average(cbf_masked[:,:,:,frame])
 	if frame_avg >= up_stdev_thresh or frame_avg <= low_stdev_thresh:
 		outliers.append(frame)
-if len(outliers) == cbf_masked.shape[3]:
-	print 'Number of outliers is equal to number of frames. Raise threshold and/or check data.'
-	sys.exit()
-cbf_masked = np.delete(cbf_masked,outliers,axis=3)
+if len(outliers) != cbf_masked.shape[3]:
+	cbf_masked = np.delete(cbf_masked,outliers,axis=3)
+else:
+	print 'Number of outliers is equal to number of frames. No filtering will be performed.'
 
 #Write out 3d filtered cbf average
 cbf_filt_avg_data = np.ma.average(cbf_masked,axis=3)
