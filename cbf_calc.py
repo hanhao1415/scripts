@@ -138,11 +138,6 @@ if args.unfilt == 1:
 	cbf_unfilt_stdev = nib.Nifti1Image(cbf_stdev_masked,perf.get_affine())
 	cbf_unfilt_stdev.to_filename(args.outroot[0] + '_cbf_unfilt_stdev.nii.gz')
 	
-	#Get unfiltered cbf variance and write it out
-	cbf_unfilt_var_data = np.var(cbf_masked,axis=3)
-	cbf_unfilt_var = nib.Nifti1Image(cbf_unfilt_var_data,perf.get_affine())
-	cbf_unfilt_var.to_filename(args.outroot[0] + '_cbf_unfilt_var.nii.gz')
-	
 	#Write out unfiltered 4d cbf
 	if args.out4d == 1:
 		cbf_unfilt = nib.Nifti1Image(cbf_masked,perf.get_affine())
@@ -171,10 +166,6 @@ cbf_filt_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
 cbf_stdev_masked = np.std(cbf_masked,axis=3)
 cbf_stdev = nib.Nifti1Image(cbf_stdev_masked,perf.get_affine())
 cbf_stdev.to_filename(args.outroot[0] + '_cbf_stdev.nii.gz')
-
-cbf_var_masked = np.var(cbf_masked,axis=3)
-cbf_var = nib.Nifti1Image(cbf_var_masked,perf.get_affine())
-cbf_var.to_filename(args.outroot[0] + '_cbf_var.nii.gz')
 
 #If user wants, output filtered 4D cbf image
 if args.out4d == 1:
