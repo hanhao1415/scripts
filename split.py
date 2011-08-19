@@ -22,24 +22,22 @@ except (IOError,nib.spatialimages.ImageFileError):
 	sys.exit()
 input_data = input.get_data()
 
-#If deterimant in less than zero, flip
-if np.linalg.det(input.get_affine()) < 0:
-	input_data = np.flipud(input_data)
-
 #Split image into odd and even splices
 even_data = input_data[:,:,0::2]
 odd_data = input_data[:,:,1::2]
 
-#Get reference voxel size
+#Get header and setup new qform adn sform matrices
 input_header = input.get_header()
-vox = input_header.structarr['pixdim']
+old_vox = input_header.structarr['pixdim']
+qform = input_header.get_qform()
+sform = input_header.get_sform()
+qform[2,2] = old_vox[3]*2.0
+sform[2,2] = old_vox[3]*2.0
 
 #Create header for output
 out_header = nib.Nifti1Header()
-out_header.set_qform(np.array([[vox[1],0,0,vox[1]],[0,vox[2],0,vox[2]],[0,0,vox[3]*2,
-					 vox[3]*2],[0,0,0,1]]),code=0)
-out_header.set_sform(np.array([[vox[1],0,0,vox[1]],[0,vox[2],0,vox[2]],[0,0,vox[3]*2,
-					 vox[3]*2],[vox[1],vox[2],vox[3]*2,1]]),code=1)
+out_header.set_qform(qform,code=1)
+out_header.set_sform(sform,code=1)
 
 #Write out images
 even = nib.Nifti1Image(even_data,None,header=out_header)

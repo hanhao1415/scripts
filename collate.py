@@ -44,21 +44,18 @@ collated_data = np.empty((img1_data.shape[0],img1_data.shape[1],img1_data.shape[
 collated_data[:,:,0::2,:] = img1_data
 collated_data[:,:,1::2,:] = img2_data
 
-#Flip data if deterimant is less than zero
-if np.linalg.det(img1.get_affine()) < 0 or np.linalg.det(img2.get_affine()) < 0:
-	collated_data = np.flipud(collated_data)
-
-#Call header and get get new voxel size
+#Call header and setup new qform and sform matrices
 img1_header = img1.get_header()
 old_vox = img1_header.structarr['pixdim']
-new_vox = (old_vox[1],old_vox[2],old_vox[3]/2.0)
+qform = img1_header.get_qform()
+sform = img1_header.get_sform()
+qform[2,2] = old_vox[3]/2.0
+sform[2,2] = old_vox[3]/2.0
 
 #Create header for output
 out_header = nib.Nifti1Header()
-out_header.set_qform(np.array([[new_vox[0],0,0,new_vox[0]],[0,new_vox[1],0,new_vox[1]],
-					[0,0,new_vox[2],new_vox[2]],[0,0,0,1]]),code=0)
-out_header.set_sform(np.array([[new_vox[0],0,0,new_vox[0]],[0,new_vox[1],0,new_vox[1]],
-					[0,0,new_vox[2],new_vox[2]],[new_vox[0],new_vox[1],new_vox[2],1]]),code=1)
+out_header.set_qform(qform,code=1)
+out_header.set_sform(sform,code=1)
 
 #Write out image
 collated = nib.Nifti1Image(collated_data,None,header=out_header)
