@@ -1,4 +1,5 @@
 #!/bin/python
+# Tyler Blazey, Summer 2011
 
 #import system modules
 import sys
