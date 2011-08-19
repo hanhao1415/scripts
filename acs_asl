@@ -514,7 +514,8 @@ if ( $status == 1 || $force == 1 ) then
 	$cmd |& tee -a $log		
 endif
 
-foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg )
+foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg\
+              ${out}_asl_col_mc_pvc${kernel}_cbf_var ${out}_asl_col_mc_cbf_var  )
 	
 	#Transform cbf to Freesurfer subject volume
 	test ${cbf}_to_orig_masked.nii.gz -nt ${cbf}.nii.gz \
