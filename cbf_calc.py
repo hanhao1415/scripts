@@ -125,7 +125,7 @@ for frame in range(cbf_masked_data.shape[3]):
 						           np.nan_to_num((perf_data[:,:,:,frame]*scale_array/m0_data))
 
 #Create a temporal standard deviation image for calculated cbf
-cbf_stdev_masked_data = np.std(cbf_masked_data,axis=3)
+cbf_stdev_masked_data = np.std(cbf_masked_data,axis=3,dtype=np.float64)
 
 #If user wants, output unfiltered cbf images
 if args.unfilt == 1:
@@ -139,7 +139,7 @@ if args.unfilt == 1:
 	cbf_unfilt_stdev.to_filename(args.outroot[0] + '_cbf_unfilt_stdev.nii.gz')
 	
 	#Get unfiltered cbf variance and write it out
-	cbf_unfilt_var_data = np.var(cbf_masked_data,axis=3)
+	cbf_unfilt_var_data = np.var(cbf_masked_data,axis=3,dtype=np.float64)
 	cbf_unfilt_var = nib.Nifti1Image(cbf_unfilt_var_data,perf.get_affine())
 	cbf_unfilt_var.to_filename(args.outroot[0] + '_cbf_unfilt_var.nii.gz')
 	
@@ -168,12 +168,12 @@ cbf_filt_avg = nib.Nifti1Image(cbf_filt_avg_data,perf.get_affine())
 cbf_filt_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
 
 #Get filtered standard deviation and write that out
-cbf_stdev_masked_data = np.std(cbf_masked_data,axis=3)
+cbf_stdev_masked_data = np.std(cbf_masked_data,axis=3,dtype=np.float64)
 cbf_stdev_masked = nib.Nifti1Image(cbf_stdev_masked_data,perf.get_affine())
 cbf_stdev_masked.to_filename(args.outroot[0] + '_cbf_stdev.nii.gz')
 
 #Get, and then write out, cbf variance
-cbf_var_data = np.var(cbf_masked_data,axis=3)
+cbf_var_data = np.var(cbf_masked_data,axis=3,dtype=np.float64)
 cbf_var = nib.Nifti1Image(cbf_var_data,perf.get_affine())
 cbf_var.to_filename(args.outroot[0] + '_cbf_var.nii.gz')
 
