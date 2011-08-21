@@ -182,10 +182,13 @@ else:
 	frame_out_avg = frame_avg + (mthresh[0] * frame_std)
 	frame_out_std = frame_std_avg + (sthresh[0] * frame_std_std)
 	
+	#Setup arrays for slice means and standard deviations
 	slice_avg_array = np.zeros(perf_masked_data.shape[3])
 	slice_std_array = np.zeros(perf_masked_data.shape[3])
 	
 	for slice in range(perf_masked_data.shape[2]):
+		
+		#Get the mean and standard deviation for slice across time
 		slice_avg = np.abs(np.ma.average(perf_masked_data[:,:,slice,:]))
  		slice_std = np.ma.std(perf_masked_data[:,:,slice,:],dtype=np.float64)
  		 
@@ -193,7 +196,8 @@ else:
  		 		
  		 		#Check for frames outliers
  		 		if slice == 0:
-					if np.abs(np.ma.average(perf_masked_data[:,:,:,frame])) > frame_out_avg or frame_std_array[frame] > frame_out_std:
+					if np.abs(np.ma.average(perf_masked_data[:,:,:,frame])) > frame_out_avg \
+							or frame_std_array[frame] > frame_out_std:
 						frame_filt_mask[:,:,:,frame] = 1
 				
 				#Get the average and std for each slice with the frame
@@ -208,6 +212,7 @@ else:
  		slice_out_avg = slice_avg + ( mthresh[0] * slice_std )
  		slice_out_std  = slice_std_avg + ( sthresh[0] * slice_std_std )
  		
+ 		#Check for slice outliers
  		for frame in range(perf_masked_data.shape[3]):
  			if slice_avg_array[frame] > slice_out_avg or slice_std_array[frame] > slice_out_std:
  				slice_filt_mask[:,:,slice,frame] = 1
@@ -218,7 +223,6 @@ else:
 	#Calculate filtered cbf
 	perf_masked_data = np.ma.array(perf_data,mask=comb_filt_mask)
 	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=comb_filt_mask)
-
 	for frame in range(cbf_filt_masked_data.shape[3]):
 		cbf_filt_masked_data[:,:,:,frame] = cbf_filt_masked_data[:,:,:,frame] + \
 											np.nan_to_num((perf_masked_data[:,:,:,frame] * \
