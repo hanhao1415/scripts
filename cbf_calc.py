@@ -26,6 +26,8 @@ qTI       = correction for difference between blood and tissue T1 and venous out
 
 Note: qTI was not used in the Wang 2003 paper. See Warmuth et. al 2003 Radiology.
 
+Uses the filtering method from Tan et. al 2009 JMRI
+
 Tyler Blazey, Summer 2011.
 
 """
@@ -106,81 +108,139 @@ mask_array_3d = ( mask_data - 1 ) * -1 #have to invert, as numpy masks out 1s an
 mask_array_4d = np.empty_like(perf_data)
 mask_array_4d[:,:,:,:] = np.expand_dims(mask_array_3d,axis=3)
 
+#Mask the data arrays
+perf_masked_data = np.ma.array(perf_data,mask=mask_array_4d)
+m0_masked_data = np.ma.array(m0_data,mask=mask_array_3d)
+
+
 #Create a 3D matrix with a different scale value for each slice
-sliceTime = (args.minTR[0] - args.TI2[0]) / m0_data.shape[2]
-scale_array = np.empty_like(m0_data)
+sliceTime = (args.minTR[0] - args.TI2[0]) / m0_masked_data.shape[2]
+scale_array = np.ma.empty_like(m0_masked_data)
 
 #Here we only have ten slice times due to interleaved runs
-for slice in range(m0_data.shape[2]/2):
+for slice in range(m0_masked_data.shape[2]/2):
 	acqTime = args.TI2[0] + (slice * sliceTime)
 	scale = (6000.0 * 1000.0 * args.lmbda[0]) / ( 2.0 * np.exp( -acqTime / args.T1a[0]) \
 			 * args.TI1[0] * args.alp[0] * args.qTI[0])
 	scale_array[:,:,slice*2] = scale
 	scale_array[:,:,slice*2+1] = scale
 
-#Calculate cbf
-cbf_masked_data = np.ma.array(np.zeros_like(perf_data),mask=mask_array_4d)
-for frame in range(cbf_masked_data.shape[3]):
-	cbf_masked_data[:,:,:,frame] = cbf_masked_data[:,:,:,frame] + \
-						           np.nan_to_num((perf_data[:,:,:,frame]*scale_array/m0_data))
-
-#Create a temporal standard deviation image for calculated cbf
-cbf_stdev_masked_data = np.std(cbf_masked_data,axis=3,dtype=np.float64)
-
 #If user wants, output unfiltered cbf images
 if args.unfilt == 1:
+	
+	#Calculate unfiltered cbf
+	cbf_unfilt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=mask_array_4d)
+	for frame in range(cbf_unfilt_masked_data.shape[3]):
+		cbf_unfilt_masked_data[:,:,:,frame] = cbf_unfilt_masked_data[:,:,:,frame] + \
+						           	          np.nan_to_num((perf_masked_data[:,:,:,frame] * \
+						           	          scale_array/m0_masked_data))
 	#Write out unfiltered 3d cbf average
-	cbf_unfilt_avg_data = np.ma.average(cbf_masked_data,axis=3)
+	cbf_unfilt_avg_data = np.ma.average(cbf_unfilt_masked_data,axis=3)
 	cbf_unfilt_avg = nib.Nifti1Image(cbf_unfilt_avg_data,perf.get_affine())
 	cbf_unfilt_avg.to_filename(args.outroot[0] + '_cbf_unfilt_avg.nii.gz')
 	
-	#Write out unfiltered cbf stdev
-	cbf_unfilt_stdev = nib.Nifti1Image(cbf_stdev_masked_data,perf.get_affine())
-	cbf_unfilt_stdev.to_filename(args.outroot[0] + '_cbf_unfilt_stdev.nii.gz')
+	#Get and write out unfilted cbf standard deviation
+	cbf_std_masked_data = np.std(cbf_unfilt_masked_data,axis=3,dtype=np.float64)
+	cbf_unfilt_std = nib.Nifti1Image(cbf_std_masked_data,perf.get_affine())
+	cbf_unfilt_std.to_filename(args.outroot[0] + '_cbf_unfilt_std.nii.gz')
 	
 	#Get unfiltered cbf variance and write it out
-	cbf_unfilt_var_data = np.var(cbf_masked_data,axis=3,dtype=np.float64)
+	cbf_unfilt_var_data = np.var(cbf_unfilt_masked_data,axis=3,dtype=np.float64)
 	cbf_unfilt_var = nib.Nifti1Image(cbf_unfilt_var_data,perf.get_affine())
 	cbf_unfilt_var.to_filename(args.outroot[0] + '_cbf_unfilt_var.nii.gz')
 	
 	#Write out unfiltered 4d cbf
 	if args.out4d == 1:
-		cbf_unfilt = nib.Nifti1Image(cbf_masked_data,perf.get_affine())
+		cbf_unfilt = nib.Nifti1Image(cbf_unfilt_masked_data,perf.get_affine())
 		cbf_unfilt.to_filename(args.outroot[0] + '_cbf_unfilt.nii.gz')
 
-#Identify cbf outliers
-mean_stdev = np.ma.average(cbf_stdev_masked_data)
-up_stdev_thresh = mean_stdev + (mean_stdev * args.thresh[0])
-low_stdev_thresh = mean_stdev - (mean_stdev * args.thresh[0])
-outliers = []
-for frame in range(cbf_masked_data.shape[3]):
-	frame_avg = np.ma.average(cbf_masked_data[:,:,:,frame])
-	if frame_avg >= up_stdev_thresh or frame_avg <= low_stdev_thresh:
-		outliers.append(frame)
-if len(outliers) != cbf_masked_data.shape[3]:
-	cbf_masked_data = np.delete(cbf_masked_data,outliers,axis=3)
+#Get the std for each frame
+frame_std_array = np.zeros(perf_masked_data.shape[3])
+for frame in range(perf_masked_data.shape[3]):
+	frame_std_array[frame] = np.ma.std(perf_masked_data[:,:,:,frame],dtype=np.float64)
+
+#Check for stability
+if (np.log(np.amax(frame_std_array)-np.amin(frame_std_array))) < 1:
+	print "No filtering will be performed."
 else:
-	print 'Number of outliers is equal to number of frames. No filtering will be performed.'
 
-#Write out 3d filtered cbf average
-cbf_filt_avg_data = np.ma.average(cbf_masked_data,axis=3)
-cbf_filt_avg = nib.Nifti1Image(cbf_filt_avg_data,perf.get_affine())
-cbf_filt_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
+	#Setup masks for frame and slice outliers
+	frame_filt_mask = np.zeros_like(perf_data)
+	slice_filt_mask = np.zeros_like(perf_data)
+	
+	#Get the avg and standard deviation across frames
+	frame_avg = np.ma.average(perf_masked_data)
+	frame_std = np.ma.std(perf_masked_data,dtype=np.float64)
+	
+	#Get the average std and std of stds across frames
+	frame_std_avg = np.average(frame_std_array)
+	frame_std_std = np.std(frame_std_array,dtype=np.float64)
+	
+	#Setup mean and standard deviation outlier thresholds for frames
+	frame_out_avg = frame_avg + (2.5 * frame_std)
+	frame_out_std = frame_std_avg + (1.5 * frame_std_std)
+	
+	slice_avg_array = np.zeros(perf_masked_data.shape[3])
+	slice_std_array = np.zeros(perf_masked_data.shape[3])
+	
+	for slice in range(perf_masked_data.shape[2]):
+		slice_avg = np.abs(np.ma.average(perf_masked_data[:,:,slice,:]))
+ 		slice_std = np.ma.std(perf_masked_data[:,:,slice,:],dtype=np.float64)
+ 		 
+ 		for frame in range(perf_masked_data.shape[3]):
+ 		 		
+ 		 		#Check for frames outliers
+ 		 		if slice == 0:
+					if np.abs(np.ma.average(perf_masked_data[:,:,:,frame])) > frame_out_avg or frame_std_array[frame] > frame_out_std:
+						frame_filt_mask[:,:,:,frame] = 1
+				
+				#Get the average and std for each slice with the frame
+				slice_avg_array[frame] = np.abs(np.ma.average(perf_masked_data[:,:,slice,frame]))
+				slice_std_array[frame] = np.ma.std(perf_masked_data[:,:,slice,frame],dtype=np.float64)
+				
+		#Get the average std and the std of std for the slice
+		slice_std_avg = np.average(slice_std_array)
+ 		slice_std_std = np.std(slice_std_array,dtype=np.float64)
 
-#Get filtered standard deviation and write that out
-cbf_stdev_masked_data = np.std(cbf_masked_data,axis=3,dtype=np.float64)
-cbf_stdev_masked = nib.Nifti1Image(cbf_stdev_masked_data,perf.get_affine())
-cbf_stdev_masked.to_filename(args.outroot[0] + '_cbf_stdev.nii.gz')
+		#Determine the outliers thresholds for the slices
+ 		slice_out_avg = slice_avg + ( 2.5 * slice_std )
+ 		slice_out_std  = slice_std_avg + ( 1.5 * slice_std_std )
+ 		
+ 		for frame in range(perf_masked_data.shape[3]):
+ 			if slice_avg_array[frame] > slice_out_avg or slice_std_array[frame] > slice_out_std:
+ 				slice_filt_mask[:,:,slice,frame] = 1
+ 	
+ 	#Combine the frame mask and the slice mask
+ 	comb_filt_mask = np.ma.mask_or(frame_filt_mask,slice_filt_mask)
+	
+	#Calculate filtered cbf
+	perf_masked_data = np.ma.array(perf_data,mask=comb_filt_mask)
+	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=comb_filt_mask)
 
-#Get, and then write out, cbf variance
-cbf_var_data = np.var(cbf_masked_data,axis=3,dtype=np.float64)
-cbf_var = nib.Nifti1Image(cbf_var_data,perf.get_affine())
-cbf_var.to_filename(args.outroot[0] + '_cbf_var.nii.gz')
+	for frame in range(cbf_filt_masked_data.shape[3]):
+		cbf_filt_masked_data[:,:,:,frame] = cbf_filt_masked_data[:,:,:,frame] + \
+											np.nan_to_num((perf_masked_data[:,:,:,frame] * \
+											scale_array/m0_masked_data))
 
-#If user wants, output filtered 4D cbf image
-if args.out4d == 1:
-	cbf_filt = nib.Nifti1Image(cbf_masked_data,perf.get_affine())
-	cbf_filt.to_filename(args.outroot[0] + '_cbf.nii.gz')
+	#Write out 3d filtered cbf average
+	cbf_filt_masked_avg_data = np.ma.average(cbf_filt_masked_data,axis=3)
+	cbf_filt_masked_avg = nib.Nifti1Image(cbf_filt_masked_avg_data,perf.get_affine())
+	cbf_filt_masked_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
+
+	#Get filtered standard deviation and write that out
+	cbf_filt_masked_std_data = np.std(cbf_filt_masked_data,axis=3,dtype=np.float64)
+	cbf_filt_masked_std = nib.Nifti1Image(cbf_filt_masked_std_data,perf.get_affine())
+	cbf_filt_masked_std.to_filename(args.outroot[0] + '_cbf_std.nii.gz')
+
+	#Get, and then write out, cbf variance
+	cbf_filt_masked_var_data = np.var(cbf_filt_masked_data,axis=3,dtype=np.float64)
+	cbf_filt_masked_var = nib.Nifti1Image(cbf_filt_masked_var_data,perf.get_affine())
+	cbf_filt_masked_var.to_filename(args.outroot[0] + '_cbf_var.nii.gz')
+
+	#If user wants, output filtered 4D cbf image
+	if args.out4d == 1:
+		cbf_filt_masked = nib.Nifti1Image(cbf_filt_masked_data,perf.get_affine())
+		cbf_filt_masked.to_filename(args.outroot[0] + '_cbf.nii.gz')
 
 
 

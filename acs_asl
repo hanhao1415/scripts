@@ -397,10 +397,10 @@ foreach pve ( 0 1 2 )
 end
 
 #Create a thresholded gray matter mask
-test ${out}_orig_masked_pve_0_mask.nii.gz -nt ${out}_orig_masked_pve_0.nii.gz
+test ${out}_orig_masked_pve_1_mask.nii.gz -nt ${out}_orig_masked_pve_1.nii.gz
 if ( $status == 1 || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_0 -thr $gthresh )
-	set cmd = ( $cmd ${out}_orig_masked_pve_0_mask )								 
+	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_1 -thr $gthresh )
+	set cmd = ( $cmd ${out}_orig_masked_pve_1_mask )								 
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
