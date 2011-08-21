@@ -63,8 +63,10 @@ arg_parse.add_argument('-qTI',help='Correction factor for difference between blo
 					  venous outflow. Default is 0.85',type=float,default=[0.85],nargs=1)
 arg_parse.add_argument('-T1a',help='Longitudinal relxation time of blood (ms). Default is 1664.0',
 					  type=float,default=[1664.0],nargs=1)
-arg_parse.add_argument('-thresh',help='Standard deviation threshold for outliers. Default is 3',
-					  type=float,default=[3.0],nargs=1)
+arg_parse.add_argument('-mthresh',help='Standard deviation threshold for mean outliers. Default is\
+					  2.5',type=float,default=[2.5],nargs=1)
+arg_parse.add_argument('-sthresh',help='Standard deviation threshold for standard deviation \
+					  outliers. Default is 1.5'type=float,default=[1.5],nargs=1)
 arg_parse.add_argument('-unfilt',action='store_const',const=1,help='Output unfiltered CBF data.\
 					  Filtering refers to removal of 3d volumes whose CBF exceeds the standard \
 					  deviation by value specifed by -thresh.')
@@ -177,8 +179,8 @@ else:
 	frame_std_std = np.std(frame_std_array,dtype=np.float64)
 	
 	#Setup mean and standard deviation outlier thresholds for frames
-	frame_out_avg = frame_avg + (2.5 * frame_std)
-	frame_out_std = frame_std_avg + (1.5 * frame_std_std)
+	frame_out_avg = frame_avg + (mthresh[0] * frame_std)
+	frame_out_std = frame_std_avg + (sthresh[0] * frame_std_std)
 	
 	slice_avg_array = np.zeros(perf_masked_data.shape[3])
 	slice_std_array = np.zeros(perf_masked_data.shape[3])
@@ -203,8 +205,8 @@ else:
  		slice_std_std = np.std(slice_std_array,dtype=np.float64)
 
 		#Determine the outliers thresholds for the slices
- 		slice_out_avg = slice_avg + ( 2.5 * slice_std )
- 		slice_out_std  = slice_std_avg + ( 1.5 * slice_std_std )
+ 		slice_out_avg = slice_avg + ( mthresh[0] * slice_std )
+ 		slice_out_std  = slice_std_avg + ( sthresh[0] * slice_std_std )
  		
  		for frame in range(perf_masked_data.shape[3]):
  			if slice_avg_array[frame] > slice_out_avg or slice_std_array[frame] > slice_out_std:
