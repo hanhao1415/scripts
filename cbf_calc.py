@@ -5,7 +5,7 @@ cbf_calc.py: Python script to calculate CBF from perfusion images.
 
 Uses the following equation from Wang et. al 2003 JMRI:
 
-f = [ 6000 * 1000 * DeltaM * lambda ] / [ 2 * M0 * TI1 * exp(-TI2 / T1a) * qTI ]
+f = [ 6000 * 1000 * DeltaM * lambda ] / [ 2 * alp* M0 * TI1 * exp(-TI2 / T1a) * qTI ]
 
 Where:
 
@@ -15,7 +15,7 @@ M0        = equilibrium brain/tissue magnetization -> acquired voxelwise
 TI1       = inversion time one, labeltime -> sequence dependent
 TI2       = inversion time two -> sequence dependent, varies by slice
           = T11 + w
-          = TI1 + w + ( slicetime * slice number )
+Acq_Time  = TI1 + w + ( slicetime * slice number )
           = TI2 + (slicetime * slice number )
 w         = delay time between saturation and excitation pulses -> sequence dependent
           = TI2 - TI1
@@ -23,6 +23,7 @@ slicetime = time to acquire each slice -> sequence dependent
           = (minTR - TI2) / # of slices
 minTR     = minimum TR -> sequence dependent
 qTI       = correction for difference between blood and tissue T1 and venous outflow -> set constant
+alp	      = Labeling efficiency -> Dependent on ASL type.
 
 Note: qTI was not used in the Wang 2003 paper. See Warmuth et. al 2003 Radiology.
 
@@ -66,7 +67,7 @@ arg_parse.add_argument('-T1a',help='Longitudinal relxation time of blood (ms). D
 arg_parse.add_argument('-mthresh',help='Standard deviation threshold for mean outliers. Default is\
 					  2.5',type=float,default=[2.5],nargs=1)
 arg_parse.add_argument('-sthresh',help='Standard deviation threshold for standard deviation \
-					  outliers. Default is 1.5'type=float,default=[1.5],nargs=1)
+					  outliers. Default is 1.5',type=float,default=[1.5],nargs=1)
 arg_parse.add_argument('-unfilt',action='store_const',const=1,help='Output unfiltered CBF data.\
 					  Filtering refers to removal of 3d volumes whose CBF exceeds the standard \
 					  deviation by value specifed by -thresh.')
@@ -116,13 +117,12 @@ m0_masked_data = np.ma.array(m0_data,mask=mask_array_3d)
 
 
 #Create a 3D matrix with a different scale value for each slice
-sliceTime = (args.minTR[0] - args.TI2[0]) / m0_masked_data.shape[2]
+#Note, that we will assume that there are ten slices for calculation due to interleaved runs
+sliceTime = (args.minTR[0] - args.TI2[0]) / ( m0_masked_data.shape[2] / 2 )
 scale_array = np.ma.empty_like(m0_masked_data)
-
-#Here we only have ten slice times due to interleaved runs
 for slice in range(m0_masked_data.shape[2]/2):
 	acqTime = args.TI2[0] + (slice * sliceTime)
-	scale = (6000.0 * 1000.0 * args.lmbda[0]) / ( 2.0 * np.exp( -acqTime / args.T1a[0]) \
+	scale = (6000.0 * 1000.0 * args.lmbda[0]) / ( 2.0 * np.exp( (-1 * acqTime) / args.T1a[0]) \
 			 * args.TI1[0] * args.alp[0] * args.qTI[0])
 	scale_array[:,:,slice*2] = scale
 	scale_array[:,:,slice*2+1] = scale
@@ -134,10 +134,10 @@ if args.unfilt == 1:
 	cbf_unfilt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=mask_array_4d)
 	for frame in range(cbf_unfilt_masked_data.shape[3]):
 		cbf_unfilt_masked_data[:,:,:,frame] = cbf_unfilt_masked_data[:,:,:,frame] + \
-						           	          np.nan_to_num((perf_masked_data[:,:,:,frame] * \
+											  np.nan_to_num((perf_masked_data[:,:,:,frame] * \
 						           	          scale_array/m0_masked_data))
 	#Write out unfiltered 3d cbf average
-	cbf_unfilt_avg_data = np.ma.average(cbf_unfilt_masked_data,axis=3)
+	cbf_unfilt_avg_data = np.ma.mean(cbf_unfilt_masked_data,axis=3)
 	cbf_unfilt_avg = nib.Nifti1Image(cbf_unfilt_avg_data,perf.get_affine())
 	cbf_unfilt_avg.to_filename(args.outroot[0] + '_cbf_unfilt_avg.nii.gz')
 	
@@ -171,16 +171,16 @@ else:
 	slice_filt_mask = np.zeros_like(perf_data)
 	
 	#Get the avg and standard deviation across frames
-	frame_avg = np.ma.average(perf_masked_data)
+	frame_avg = np.ma.mean(perf_masked_data)
 	frame_std = np.ma.std(perf_masked_data,dtype=np.float64)
 	
 	#Get the average std and std of stds across frames
-	frame_std_avg = np.average(frame_std_array)
+	frame_std_avg = np.mean(frame_std_array)
 	frame_std_std = np.std(frame_std_array,dtype=np.float64)
 	
 	#Setup mean and standard deviation outlier thresholds for frames
-	frame_out_avg = frame_avg + (mthresh[0] * frame_std)
-	frame_out_std = frame_std_avg + (sthresh[0] * frame_std_std)
+	frame_out_avg = frame_avg + (args.mthresh[0] * frame_std)
+	frame_out_std = frame_std_avg + (args.sthresh[0] * frame_std_std)
 	
 	#Setup arrays for slice means and standard deviations
 	slice_avg_array = np.zeros(perf_masked_data.shape[3])
@@ -189,39 +189,40 @@ else:
 	for slice in range(perf_masked_data.shape[2]):
 		
 		#Get the mean and standard deviation for slice across time
-		slice_avg = np.abs(np.ma.average(perf_masked_data[:,:,slice,:]))
+		slice_avg = np.abs(np.ma.mean(perf_masked_data[:,:,slice,:]))
  		slice_std = np.ma.std(perf_masked_data[:,:,slice,:],dtype=np.float64)
  		 
  		for frame in range(perf_masked_data.shape[3]):
  		 		
  		 		#Check for frames outliers
  		 		if slice == 0:
-					if np.abs(np.ma.average(perf_masked_data[:,:,:,frame])) > frame_out_avg \
+					if np.abs(np.ma.mean(perf_masked_data[:,:,:,frame])) > frame_out_avg \
 							or frame_std_array[frame] > frame_out_std:
 						frame_filt_mask[:,:,:,frame] = 1
 				
-				#Get the average and std for each slice with the frame
-				slice_avg_array[frame] = np.abs(np.ma.average(perf_masked_data[:,:,slice,frame]))
-				slice_std_array[frame] = np.ma.std(perf_masked_data[:,:,slice,frame],dtype=np.float64)
+				#Get the average and std for slice within frame
+				slice_avg_array[frame] = np.abs(np.ma.mean(perf_masked_data[:,:,slice,frame]))
+				slice_std_array[frame] = np.ma.std(perf_masked_data[:,:,slice,frame],
+				                                  dtype=np.float64)
 				
 		#Get the average std and the std of std for the slice
-		slice_std_avg = np.average(slice_std_array)
+		slice_std_avg = np.mean(slice_std_array)
  		slice_std_std = np.std(slice_std_array,dtype=np.float64)
 
 		#Determine the outliers thresholds for the slices
- 		slice_out_avg = slice_avg + ( mthresh[0] * slice_std )
- 		slice_out_std  = slice_std_avg + ( sthresh[0] * slice_std_std )
+ 		slice_out_avg = slice_avg + ( args.mthresh[0] * slice_std )
+ 		slice_out_std  = slice_std_avg + ( args.sthresh[0] * slice_std_std )
  		
  		#Check for slice outliers
  		for frame in range(perf_masked_data.shape[3]):
  			if slice_avg_array[frame] > slice_out_avg or slice_std_array[frame] > slice_out_std:
  				slice_filt_mask[:,:,slice,frame] = 1
  	
- 	#Combine the frame mask and the slice mask
+ 	#Combine all the masks
  	comb_filt_mask = np.ma.mask_or(frame_filt_mask,slice_filt_mask)
+	comb_filt_mask = np.ma.mask_or(comb_filt_mask,np.ma.make_mask(mask_array_4d))
 	
 	#Calculate filtered cbf
-	perf_masked_data = np.ma.array(perf_data,mask=comb_filt_mask)
 	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=comb_filt_mask)
 	for frame in range(cbf_filt_masked_data.shape[3]):
 		cbf_filt_masked_data[:,:,:,frame] = cbf_filt_masked_data[:,:,:,frame] + \
@@ -229,7 +230,7 @@ else:
 											scale_array/m0_masked_data))
 
 	#Write out 3d filtered cbf average
-	cbf_filt_masked_avg_data = np.ma.average(cbf_filt_masked_data,axis=3)
+	cbf_filt_masked_avg_data = np.ma.mean(cbf_filt_masked_data,axis=3)
 	cbf_filt_masked_avg = nib.Nifti1Image(cbf_filt_masked_avg_data,perf.get_affine())
 	cbf_filt_masked_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
 

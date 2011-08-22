@@ -17,25 +17,26 @@ if ( $#argv == 0 ) then
 	echo "	-out: Root for outputed files."
 	echo ""
 	echo "Optional Arguments:"
-	echo '	-subjdir: Set FreeSurfer subjects directory. Default is $FREESURFER_HOME/subjects'
+	echo '	-subjdir: Set FreeSurfer subjects directory. Default is current $SUBJECTS_DIR.'
 	echo "	-simple: Do simple subtraction. Default is sinc."
 	echo "	-avgperf: Output average perfusion image."
 	echo "	-unfilt: Output CBF data with and without outlier removal."
-	echo "	-cthresh: Standard deviation threshold for CBF outliers. Default is 3."
+	echo "	-mthresh: Threshold for mean perfusion outliers. Default is 2.5."
+	echo "  -sthresh: Threshold for standard deviation perfusion outliers. Default is 1.5"
 	echo "	-kernel: Size of regression kernel for partial volume correction. Default is 5.0."
 	echo "	-nocsf: Assume that there is no perfusion in CSF for partial volume correction."
 	echo "	-out4d:	Output a 4d cbf image."
 	echo "	-fwhm: FWHM for surface smoothing. Default is 5."
 	echo "	-force: Run command even if output exists and is newer than input."
-	echo "	-gthresh: Threshold for gray matter mask"
+	echo "	-gthresh: Threshold for gray matter mask. Default is .3"
 	echo ""
 	echo "Note: Script requires FSL, FreeSurfer, Numpy, and Nibabel"
 	exit
 endif
 
 #Set defaults
-set cthresh = 3; set fwhm = 5; set simple = 0; set avgperf = 0; set out4d = ""; set unfilt = "";
-set kernel = 5; set nocsf = ""; set force = 0; set gthresh = 0.3;
+set mthresh = 2.5; set fwhm = 5; set simple = 0; set avgperf = 0; set out4d = ""; set unfilt = "";
+set kernel = 5; set nocsf = ""; set force = 0; set gthresh = 0.3; set sthresh = 1.5;
 
 #Parse arguments
 set args = ( $argv )
@@ -52,8 +53,10 @@ while ( $#argv > 0 )
 			set subject = $argv[1]; shift; breaksw;
 		case -out:
 			set out = $argv[1]; shift; breaksw;
-		case -cthresh:
-			set cthresh = $argv[1]; shift; breaksw;
+		case -mthresh:
+			set mthresh = $argv[1]; shift; breaksw;
+		case -sthresh:
+			set sthresh = $argv[1]; shift; breaksw;
 		case -fwhm:
 			set fwhm = $argv[1]; shift; breaksw;
 		case -simple:
@@ -160,7 +163,7 @@ test ${out}_tse_1.nii.gz -nt ${out}_asl_col_m0.nii.gz \
 if ( $status == 1 || $force == 1 ) then
 	#Reslice the tse like the collated asl
 	set cmd = ( $FREESURFER_HOME/bin/mri_convert ${tse}.nii.gz -rl ${out}_asl_col_m0.nii.gz )
-	set cmd = ( $cmd ${out}_tse_resliced.nii.gz -rt sinc )
+	set cmd = ( $cmd ${out}_tse_resliced.nii.gz )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 	
@@ -251,7 +254,7 @@ foreach run ( $run1 $run2 )
 		foreach vol ( vol*.nii.gz )
 			set num = `echo $vol | sed 's/vol//g' | sed 's/.nii.gz//g'`
 			set cmd = ( $FSLDIR/bin/applywarp -i $vol -o ${vol:r:r}_transformed -r $vol )
-			set cmd = ( $cmd --premat=${out}_asl_${count}_mcf.mat/MAT_${num} --interp=spline )
+			set cmd = ( $cmd --premat=${out}_asl_${count}_mcf.mat/MAT_${num} )
 			set cmd = ( $cmd --postmat=${out}_asl_${count}_m0_to_tse_${count}.mat )
 			echo $cmd |& tee -a $log
 		 	$cmd |& tee -a $log
@@ -466,7 +469,7 @@ test ${out}_asl_col_mc_cbf_avg.nii.gz -nt ${out}_asl_col_mc_perf.nii.gz \
 if ( $status == 1 || $force == 1 ) then	
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_col_mc_perf.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc_m0.nii.gz ${out}_asl_col_mc_m0_brain_mask.nii.gz )
-	set cmd = ( $cmd ${out}_asl_col_mc $out4d $unfilt -thresh $cthresh )
+	set cmd = ( $cmd ${out}_asl_col_mc $out4d $unfilt -mthresh $mthresh -sthresh $sthresh )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
@@ -509,7 +512,7 @@ if ( $status == 1 || $force == 1 ) then
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_col_mc_pvc${kernel}_dgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc_pvc${kernel}_mgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc_m0_brain_mask.nii.gz ${out}_asl_col_mc_pvc${kernel} )
-	set cmd = ( $cmd $unfilt -thresh $cthresh )
+	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log		
 endif
@@ -522,7 +525,7 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg \
 	     -a ${cbf}_to_orig_masked.nii.gz -nt ${out}_orig_masked.nii.gz \
 	     -a ${cbf}_to_orig_masked.nii.gz -nt ${out}_asl_col_mc_m0_brain_to_orig_masked.mat
 	if ( $status == 1 || $force == 1 ) then
-		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${out}_orig_masked --interp=spline )
+		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${out}_orig_masked )
 		set cmd = ( $cmd --premat=${out}_asl_col_mc_m0_brain_to_orig_masked.mat )
 		set cmd = ( $cmd --out=${cbf}_to_orig_masked.nii.gz )
 		echo $cmd |& tee -a $log
