@@ -68,28 +68,22 @@ arg_parse.add_argument('-mthresh',help='Standard deviation threshold for mean ou
 					  2.5',type=float,default=[2.5],nargs=1)
 arg_parse.add_argument('-sthresh',help='Standard deviation threshold for standard deviation \
 					  outliers. Default is 1.5',type=float,default=[1.5],nargs=1)
-arg_parse.add_argument('-unfilt',action='store_const',const=1,help='Output unfiltered CBF data.\
-					  Filtering refers to removal of 3d volumes whose CBF exceeds the standard \
-					  deviation by value specifed by -thresh.')
+arg_parse.add_argument('-unfilt',action='store_const',const=1,help='Output unfiltered CBF data.')
 arg_parse.add_argument('-out4d',action='store_const',const=1,
 					  help='Output a 4d cbf image for each output.')
 args = arg_parse.parse_args()
 
-#Load perfusion images
+#Load images
 try:
 	perf = nib.load(args.perf[0])
 except (IOError,nib.spatialimages.ImageFileError):
 	print 'Cannot find perf image at %s'%(args.perf[0])
 	sys.exit()
-
-#Load mask
 try:
 	mask = nib.load(args.mask[0])
 except (IOError,nib.spatialimages.ImageFileError):
 	print 'Cannot find mask image at %s'%(args.mask[0])
 	sys.exit()
-
-#Load m0
 try:
 	m0 = nib.load(args.m0[0])
 except (IOError,nib.spatialimages.ImageFileError):
@@ -166,7 +160,7 @@ if (np.log(np.amax(frame_std_array)-np.amin(frame_std_array))) < 1:
 	print "No filtering will be performed."
 else:
 
-	#Setup masks for frame and slice outliers
+	#Setup empty masks for frame and slice outliers
 	frame_filt_mask = np.zeros_like(perf_data)
 	slice_filt_mask = np.zeros_like(perf_data)
 	
@@ -174,7 +168,7 @@ else:
 	frame_avg = np.ma.mean(perf_masked_data)
 	frame_std = np.ma.std(perf_masked_data,dtype=np.float64)
 	
-	#Get the average std and std of stds across frames
+	#Get the average frame std and std of stds
 	frame_std_avg = np.mean(frame_std_array)
 	frame_std_std = np.std(frame_std_array,dtype=np.float64)
 	
@@ -239,7 +233,7 @@ else:
 	cbf_filt_masked_std = nib.Nifti1Image(cbf_filt_masked_std_data,perf.get_affine())
 	cbf_filt_masked_std.to_filename(args.outroot[0] + '_cbf_std.nii.gz')
 
-	#Get, and then write out, cbf variance
+	#Get, and then write out, filtered cbf variance
 	cbf_filt_masked_var_data = np.var(cbf_filt_masked_data,axis=3,dtype=np.float64)
 	cbf_filt_masked_var = nib.Nifti1Image(cbf_filt_masked_var_data,perf.get_affine())
 	cbf_filt_masked_var.to_filename(args.outroot[0] + '_cbf_var.nii.gz')

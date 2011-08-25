@@ -85,7 +85,7 @@ gm_pbmap_data = gm_pbmap.get_data()
 wm_pbmap_data = wm_pbmap.get_data()
 
 #Create masking arrays
-mask_array = (brain_mask_data - 1) * - 1
+mask_array = (brain_mask_data - 1) * - 1 #have to invert, as numpy masks out 1s and includes 0s
 mask_array_4d = np.empty_like(perf_data)
 mask_array_4d[:,:,:,:] = np.expand_dims(mask_array,axis=3)
 
@@ -173,7 +173,7 @@ for dim_3 in range(perf.shape[2]):
 					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
 					mwm_pvc_data[dim_1,dim_2,dim_3]] = np.dot(m_reg_inv,m0_kernel)
 					
-					if args.nocsf[0] == 1 and np.sum((dm_reg>0)) < 3:
+					if args.nocsf[0] == 1 and np.sum((dm_reg>0)) < 2:
 						[dgm_pvc_data[dim_1,dim_2,dim_3,:],dwm_pvc_data[dim_1,dim_2,dim_3,:]] = \
 						[0,0]
 					
