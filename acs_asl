@@ -1,6 +1,16 @@
 #!/bin/tcsh -f
 # Tyler Blazey, Summer 2011
 
+#Check for dependencies
+if ( ! -e $FSLDIR ) then
+	echo "Set FSLDIR before running script"
+	exit 1
+endif
+if ( ! -e $FREESURFER_HOME ) then
+	echo "Set FREESURFER_HOME before running script"
+	exit 1
+endif
+
 #Usage
 set program = $0:t
 if ( $#argv == 0 ) then
@@ -19,7 +29,6 @@ if ( $#argv == 0 ) then
 	echo "Optional Arguments:"
 	echo '	-subjdir: Set FreeSurfer subjects directory. Default is current $SUBJECTS_DIR.'
 	echo "	-simple: Do simple subtraction. Default is sinc."
-	echo "	-avgperf: Output average perfusion image."
 	echo "	-unfilt: Output CBF data with and without outlier removal."
 	echo "	-mthresh: Threshold for mean perfusion outliers. Default is 2.5."
 	echo "  -sthresh: Threshold for standard deviation perfusion outliers. Default is 1.5"
@@ -61,8 +70,6 @@ while ( $#argv > 0 )
 			set fwhm = $argv[1]; shift; breaksw;
 		case -simple:
 			set simple = 1; breaksw;
-		case -avgperf:
-			set avgperf = 1; breaksw;
 		case -out4d:
 			set out4d = "-out4d"; breaksw;
 		case -unfilt:
@@ -71,7 +78,7 @@ while ( $#argv > 0 )
 				set kernel = $argv[1]; shift; breaksw;
 			endif
 		case -nocsf:
-			set nocsf = "-nocsf"; shift; breaksw;
+			set nocsf = "-nocsf"; breaksw;
 		case -subjdir:
 			if ( ! -d $argv[1] ) then
 				echo "Cannot find directory $argv[1]."
@@ -80,9 +87,12 @@ while ( $#argv > 0 )
 				setenv SUBJECTS_DIR $argv[1]; shift; breaksw;
 			endif
 		case -force:
-			set force = 1; shift; breaksw;
+			set force = 1; breaksw;
 		case -gthresh:
 			set gthresh = $argv[1]; shift; breaksw;
+		default:
+			"Option $flag not recognized. See usage"
+			exit 1
 	endsw
 end
 
@@ -184,7 +194,7 @@ foreach run ( $run1 $run2 )
 		set cmd = ( $FSLDIR/bin/fsl_tsplot -i ${out}_asl_${count}_mcf.par -w 640 -h 144 ) 
 		set cmd = ( $cmd -a x,y,z -u 1 --start=1 --finish=3 -o ${out}_asl_${count}_rot.png )
 		echo $cmd -t 'Estimated Rotations (radians)' |& tee -a $log
-		$cmd -t 'Estimated Translations (mm)' |& tee -a $log
+		$cmd -t 'Estimated Rotations (radians)' |& tee -a $log
 	endif
 		
 	#Create translation plots
@@ -260,7 +270,7 @@ if ( ! -e ${out}_asl_col_mc.nii.gz || $force == 1 ) then
 	$cmd |& tee -a $log
 endif
 
-okk#Extract collated, motion corrected m0
+#Extract collated, motion corrected m0
 if ( ! -e ${out}_asl_col_mc_m0.nii.gz || $force == 1 ) then
 	set cmd = ( $FSLDIR/bin/fslroi ${out}_asl_col_mc ${out}_asl_col_mc_m0 0 1 )
 	echo $cmd |& tee -a $log
@@ -354,8 +364,8 @@ end
 
 #Create a thresholded gray matter mask
 if ( ! -e ${out}_orig_masked_pve_1_mask.nii.gz || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_1 -thr $gthresh )
-	set cmd = ( $cmd ${out}_orig_masked_pve_1_mask )								 
+	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_${pve}_to_asl_col_mc_m0_brain )
+	set cmd = ( $cmd -thr $gthresh -bin ${out}_orig_masked_pve_${pve}_to_asl_col_mc_m0_brain_mask )								 
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
@@ -405,25 +415,9 @@ if ( ! -e ${out}_asl_col_mc_perf.nii.gz || $force == 1 ) then
 	
 endif
 
-#If user wants, create avgerage perfusion image
-if ( $avgperf == 1 && ( ! -e ${out}_asl_col_mc_perf_avg.nii.gz || $force == 1 ) ) then
-	set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_col_mc_perf -Tmean ${out}_asl_col_mc_perf_avg )
-	echo $cmd |& tee -a $log
-	$cmd |& tee -a $log	
-endif
-
-#Calculate uncorrected cbf
-set check = "! -e ${out}_asl_col_mc_cbf_avg.nii.gz || ! -e ${out}_asl_col_mc_cbf_stdev.nii.gz \
-			|| ! - e ${out}_asl_col_mc_cbf_var.nii.gz || $force == 1"
-if ( $out4d != "" ) set check = ( $check " || ! -e ${out}_asl_col_mc_cbf.nii.gz" )
-if ( $unfilt != "" ) then
-	set check = ( $check " || ! -e ${out}_asl_col_mc_cbf_unfilt_avg.nii.gz \
-				|| ! -e ${out}_asl_col_mc_cbf_unfilt_var.nii.gz \
-				|| ! -e ${out}_asl_col_mc_cbf_unfilt_stdev.nii.gz" )
-	if ( $out4d != "" ) set check ( $check " || ! -e {out}_asl_col_mc_cbf_unfilt.nii.gz")			
-endif						
-if ( ! -e ${out}_asl_col_mc_cbf_avg.nii.gz || ! -e ${out}_asl_col_mc_cbf_stdev.nii.gz \
-		|| ${out}_asl_col_mc_cbf_var.nii.gz || $force == 1 ) then	
+#Calculate uncorrected cbf	
+if ( ! -e ${out}_asl_col_mc_cbf_avg.nii.gz || ! -e ${out}_asl_col_mc_cbf_std.nii.gz \
+		|| ! -e ${out}_asl_col_mc_cbf_var.nii.gz || $force == 1 ) then	
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_col_mc_perf.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc_m0.nii.gz ${out}_asl_col_mc_m0_brain_mask.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc $out4d $unfilt -mthresh $mthresh -sthresh $sthresh )
@@ -432,13 +426,11 @@ if ( ! -e ${out}_asl_col_mc_cbf_avg.nii.gz || ! -e ${out}_asl_col_mc_cbf_stdev.n
 endif
 
 #Run a regression based partial volume correction
-set check = "! -e  ${out}_asl_col_mc_pvc${kernel}_dgm.nii.gz \
-			 || ! -e ${out}_asl_col_mc_pvc${kernel}_dwm.nii.gz \
-			 || ! -e ${out}_asl_col_mc_pvc${kernel}_mgm.nii.gz  \
-			 || ! -e ${out}_asl_col_mc_pvc${kernel}_mwm.nii.gz \
-			 || ! -e ${out}_asl_col_mc_pvc${kernel}_mcsf.nii.gz || ! -e $force"
-if ( $nocsf != "" ) set check = ( $check " || ! -e ${out}_asl_col_mc_pvc${kernel}_dcsf.nii.gz" )
-if ( $check || ! -e $force == 1 ) then
+if ( ! -e ${out}_asl_col_mc_pvc${kernel}_dgm.nii.gz \
+		|| ! -e ${out}_asl_col_mc_pvc${kernel}_dwm.nii.gz \
+		|| ! -e ${out}_asl_col_mc_pvc${kernel}_mgm.nii.gz \
+		|| ! -e ${out}_asl_col_mc_pvc${kernel}_mwm.nii.gz \
+		|| ! -e ${out}_asl_col_mc_pvc${kernel}_mcsf.nii.gz || $force == 1 ) then
 	set cmd = ( python ~/Documents/scripts/lin_pv_pasl.py ${out}_asl_col_mc_perf.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc_m0.nii.gz ${out}_asl_col_mc_m0_brain_mask.nii.gz )
 	set cmd = ( $cmd ${out}_orig_masked_pve_0_to_asl_col_mc_m0_brain.nii.gz )
@@ -450,17 +442,9 @@ if ( $check || ! -e $force == 1 ) then
 endif
 
 #Calculate corrected cbf
-set check = "! -e ${out}_asl_col_mc_pvc${kernel}_cbf_avg.nii.gz \
-			|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_stdev.nii.gz \
-			|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_var.nii.gz || $force == 1"
-if ( $out4d != "" ) set check = ( $check " || ! -e ${out}_asl_col_mc_cbf.nii.gz" )
-if ( $unfilt != "" ) then
-	set check = ( $check " || ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_unfilt_avg.nii.gz \
-				|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_unfilt_var.nii.gz \
-				|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_unfilt_stdev.nii.gz" )
-	if ( $out4d != "" ) set check ( $check " || ! -e {out}_asl_col_mc_pvc${kernel}_cbf_unfilt.nii.gz")	
-endif			
-if ( $check || $force == 1 ) then	
+if ( ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_avg.nii.gz \
+		|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_std.nii.gz \
+		|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_var.nii.gz || $force == 1 ) then	
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_col_mc_pvc${kernel}_dgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc_pvc${kernel}_mgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_col_mc_m0_brain_mask.nii.gz ${out}_asl_col_mc_pvc${kernel} )
@@ -504,3 +488,12 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg \
 		endif
 	end
 end
+
+echo "#######################################" |& tee -a $log
+echo "#######################################" |& tee -a $log
+echo "" |& tee -a $log
+echo "End Time: `date '+%Y-%m-%d-%I-%M-%S'`" |& tee -a $log
+echo "" |& tee -a $log
+echo "#######################################" |& tee -a $log
+echo "#######################################" |& tee -a $log
+

@@ -1,11 +1,14 @@
 #!/usr/bin/python
 
 """
+
 cbf_calc.py: Python script to calculate CBF from perfusion images.
 
 Uses the following equation from Wang et. al 2003 JMRI:
 
 f = [ 6000 * 1000 * DeltaM * lambda ] / [ 2 * alp* M0 * TI1 * exp(-TI2 / T1a) * qTI ]
+
+f = [DeltaM/M0] * [ [6000*1000*lambda] / [2*alp*TI1*exp(-TI2/T1a)*qTI] ]
 
 Where:
 
@@ -92,7 +95,7 @@ except (IOError,nib.spatialimages.ImageFileError):
 
 #Check to see images have same dimensions
 if mask.get_shape() != m0.get_shape() or mask.get_shape() != perf.get_shape()[0:3]:
-	print 'Mismatch in images dimensions. Check data.'
+	print 'Mismatch in image dimensions. Check data.'
 	sys.exit()
 
 #Get image data
@@ -158,6 +161,7 @@ for frame in range(perf_masked_data.shape[3]):
 #Check for stability
 if (np.log(np.amax(frame_std_array)-np.amin(frame_std_array))) < 1:
 	print "No filtering will be performed."
+	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=mask_array_4d)
 else:
 
 	#Setup empty masks for frame and slice outliers
@@ -215,33 +219,33 @@ else:
  	#Combine all the masks
  	comb_filt_mask = np.ma.mask_or(frame_filt_mask,slice_filt_mask)
 	comb_filt_mask = np.ma.mask_or(comb_filt_mask,np.ma.make_mask(mask_array_4d))
-	
-	#Calculate filtered cbf
 	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=comb_filt_mask)
-	for frame in range(cbf_filt_masked_data.shape[3]):
-		cbf_filt_masked_data[:,:,:,frame] = cbf_filt_masked_data[:,:,:,frame] + \
-											np.nan_to_num((perf_masked_data[:,:,:,frame] * \
-											scale_array/m0_masked_data))
 
-	#Write out 3d filtered cbf average
-	cbf_filt_masked_avg_data = np.ma.mean(cbf_filt_masked_data,axis=3)
-	cbf_filt_masked_avg = nib.Nifti1Image(cbf_filt_masked_avg_data,perf.get_affine())
-	cbf_filt_masked_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
+#Calculate filtered cbf
+for frame in range(cbf_filt_masked_data.shape[3]):
+	cbf_filt_masked_data[:,:,:,frame] = cbf_filt_masked_data[:,:,:,frame] + \
+										np.nan_to_num((perf_masked_data[:,:,:,frame] * \
+										scale_array/m0_masked_data))
 
-	#Get filtered standard deviation and write that out
-	cbf_filt_masked_std_data = np.std(cbf_filt_masked_data,axis=3,dtype=np.float64)
-	cbf_filt_masked_std = nib.Nifti1Image(cbf_filt_masked_std_data,perf.get_affine())
-	cbf_filt_masked_std.to_filename(args.outroot[0] + '_cbf_std.nii.gz')
+#Write out 3d filtered cbf average
+cbf_filt_masked_avg_data = np.ma.mean(cbf_filt_masked_data,axis=3)
+cbf_filt_masked_avg = nib.Nifti1Image(cbf_filt_masked_avg_data,perf.get_affine())
+cbf_filt_masked_avg.to_filename(args.outroot[0] + '_cbf_avg.nii.gz')
 
-	#Get, and then write out, filtered cbf variance
-	cbf_filt_masked_var_data = np.var(cbf_filt_masked_data,axis=3,dtype=np.float64)
-	cbf_filt_masked_var = nib.Nifti1Image(cbf_filt_masked_var_data,perf.get_affine())
-	cbf_filt_masked_var.to_filename(args.outroot[0] + '_cbf_var.nii.gz')
+#Get filtered standard deviation and write that out
+cbf_filt_masked_std_data = np.std(cbf_filt_masked_data,axis=3,dtype=np.float64)
+cbf_filt_masked_std = nib.Nifti1Image(cbf_filt_masked_std_data,perf.get_affine())
+cbf_filt_masked_std.to_filename(args.outroot[0] + '_cbf_std.nii.gz')
 
-	#If user wants, output filtered 4D cbf image
-	if args.out4d == 1:
-		cbf_filt_masked = nib.Nifti1Image(cbf_filt_masked_data,perf.get_affine())
-		cbf_filt_masked.to_filename(args.outroot[0] + '_cbf.nii.gz')
+#Get, and then write out, filtered cbf variance
+cbf_filt_masked_var_data = np.var(cbf_filt_masked_data,axis=3,dtype=np.float64)
+cbf_filt_masked_var = nib.Nifti1Image(cbf_filt_masked_var_data,perf.get_affine())
+cbf_filt_masked_var.to_filename(args.outroot[0] + '_cbf_var.nii.gz')
+
+#If user wants, output filtered 4D cbf image
+if args.out4d == 1:
+	cbf_filt_masked = nib.Nifti1Image(cbf_filt_masked_data,perf.get_affine())
+	cbf_filt_masked.to_filename(args.outroot[0] + '_cbf.nii.gz')
 
 
 

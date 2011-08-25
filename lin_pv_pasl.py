@@ -147,9 +147,9 @@ for dim_3 in range(perf.shape[2]):
 				mwm_kernel = np.ma.compressed(wm_masked[x_north:x_south,y_west:y_east,dim_3])
 				m_reg = np.column_stack((mcsf_kernel,mgm_kernel,mwm_kernel))
 				if args.nocsf[0] == 0:
-					dm_reg = np.column_stack((mcsf_kernel,mgm_kernel,mwm_kernel))
+					d_reg = np.column_stack((mcsf_kernel,mgm_kernel,mwm_kernel))
 				else:
-					dm_reg = np.column_stack((mgm_kernel,mwm_kernel))
+					d_reg = np.column_stack((mgm_kernel,mwm_kernel))
 				
 				#If there isn't at least three m_reg values greater than zero
 				#set both dm and m voxels to zero
@@ -173,13 +173,13 @@ for dim_3 in range(perf.shape[2]):
 					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
 					mwm_pvc_data[dim_1,dim_2,dim_3]] = np.dot(m_reg_inv,m0_kernel)
 					
-					if args.nocsf[0] == 1 and np.sum((dm_reg>0)) < 2:
+					if args.nocsf[0] == 1 and np.sum((d_reg>0)) < 2:
 						[dgm_pvc_data[dim_1,dim_2,dim_3,:],dwm_pvc_data[dim_1,dim_2,dim_3,:]] = \
 						[0,0]
 					
 					else:
 						#Get the pseudoinverse for perfusion
-						dm_reg_inv = np.linalg.pinv(dm_reg)
+						d_reg_inv = np.linalg.pinv(d_reg)
 					
 						#Loop through every perf dimension
 						for dim_4 in range(perf.shape[3]):
@@ -192,11 +192,11 @@ for dim_3 in range(perf.shape[2]):
 								[dcsf_pvc_data[dim_1,dim_2,dim_3,:],
 								dgm_pvc_data[dim_1,dim_2,dim_3,dim_4],
 								dwm_pvc_data[dim_1,dim_2,dim_3,dim_4]] = \
-								np.dot(dm_reg_inv,perf_kernel)
+								np.dot(d_reg_inv,perf_kernel)
 							else:
 								[dgm_pvc_data[dim_1,dim_2,dim_3,dim_4],
 								dwm_pvc_data[dim_1,dim_2,dim_3,dim_4]] = \
-								np.dot(dm_reg_inv,perf_kernel)
+								np.dot(d_reg_inv,perf_kernel)
 	print 'Finished processing slice %s'%(dim_3+1)
 
 
