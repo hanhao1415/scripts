@@ -306,12 +306,19 @@ if ( ! -e ${out}_asl_col_mc_m0_brain_mask.nii.gz || ! -e  ${out}_asl_col_mc_m0_b
 	$cmd |& tee -a $log
 endif
 
-#Get a brain masked orig image
+
 if ( ! -e ${out}_orig_masked.nii.gz || $force == 1 ) then
+	#Get a brain masked orig image
 	set cmd = ( $FREESURFER_HOME/bin/mri_mask ${SUBJECTS_DIR}/${subject}/mri/orig.mgz )
-	set cmd = ( $cmd ${SUBJECTS_DIR}/${subject}/mri/brainmask.mgz ${out}_orig_masked.nii.gz )
+	set cmd = ( $cmd ${SUBJECTS_DIR}/${subject}/mri/brainmask.mgz ${out}_orig_brain_masked.nii.gz )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
+	
+	#Use mri_gcut to get a more aggressive mask
+	set cmd = ( $FREESURFER_HOME/bin/mri_gcut ${out}_orig_brain_masked.nii.gz )
+	set cmd = ( $cmd ${out}_orig_masked.nii.gz )
+	echo $cmd |& tee -a $log
+	$cmd |& tee -a $log	
 endif
 
 #Register ASL to FreeSurfer T1
