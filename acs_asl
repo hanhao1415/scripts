@@ -160,17 +160,29 @@ if ( ! -e ${out}_asl_col_m0.nii.gz || $force == 1 ) then
 	$cmd |& tee -a $log
 endif
 
-if ( ! -e ${out}_tse_resliced.nii.gz || $force == 1 ) then
-	#Reslice the tse like the collated asl
-	set cmd = ( $FREESURFER_HOME/bin/mri_convert ${tse}.nii.gz -rl ${out}_asl_col_m0.nii.gz )
-	set cmd = ( $cmd ${out}_tse_resliced.nii.gz )
+if ( ! -e ${out}_tse_to_asl_col_m0.nii.gz || $force == 1 ) then
+	#Register collated m0 to tse
+	set cmd = ( $FSLDIR/bin/flirt -in ${out}_asl_col_m0 -ref ${tse} -dof 6 -cost mutualinfo )
+	set cmd = ( $cmd -omat ${out}_asl_col_m0_to_tse.mat -out ${out}_asl_col_m0 )
+	echo $cmd |& tee -a $log
+	$cmd |& tee -a $log
+	
+	#Invert transformation matrix to get tse to m0
+	set cmd = ( $FSLDIR/bin/convert_xfm -inverse ${out}_asl_col_m0_to_tse.mat )
+	set cmd = ( $cmd -omat ${out}_tse_to_asl_col_m0.mat )
+	echo $cmd |& tee -a $log
+	$cmd |& tee -a $log
+	
+	#Resample tse
+	set cmd = ( $FSLDIR/bin/applywarp -i ${tse} -r ${out}_asl_col_m0 -o ${out}_tse_to_asl_col_m0 )
+	set cmd = ( $cmd --premat=${out}_tse_to_asl_col_m0.mat )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
 
+#Split the resliced tse like the original asl runs
 if ( ! -e ${out}_tse_1.nii.gz || ! -e ${out}_tse_2.nii.gz || $force == 1 ) then	
-	#Split the resliced tse like the original asl runs
-	set cmd = ( python ~/Documents/scripts/split.py ${out}_tse_resliced.nii.gz ${out}_tse )
+	set cmd = ( python ~/Documents/scripts/split.py ${out}_tse_to_asl_col_m0.nii.gz ${out}_tse )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
