@@ -163,7 +163,7 @@ endif
 if ( ! -e ${out}_tse_to_asl_col_m0.nii.gz || $force == 1 ) then
 	#Register collated m0 to tse
 	set cmd = ( $FSLDIR/bin/flirt -in ${out}_asl_col_m0 -ref ${tse} -dof 6 -cost mutualinfo )
-	set cmd = ( $cmd -omat ${out}_asl_col_m0_to_tse.mat -out ${out}_asl_col_m0 )
+	set cmd = ( $cmd -omat ${out}_asl_col_m0_to_tse.mat -out ${out}_asl_col_m0_to_tse )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 	
@@ -483,7 +483,17 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg \
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log		
 	endif
-
+	
+	#Get stats from Freesurfer segmentations
+	if ( ( $cbf == ${out}_asl_col_mc_pvc${kernel}_cbf_avg || $cbf == ${out}_asl_col_mc_cbf_avg ) \
+			&& ( ! -e ${cbf}_stats.txt || $force == 1 )) then
+		set cmd = ( $FREESURFER_HOME/bin/mri_segstats --i ${cbf}_to_orig_masked.nii.gz )
+		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt --sum ${cbf}_stats.txt )
+		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subject}/mri/aparc+aseg.mgz )
+		echo $cmd |& tee -a $log
+		$cmd |& tee -a $log	
+	endif
+		
 	foreach hemi ( lh rh )
 		
 		#Transform to fsaverage space
