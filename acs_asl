@@ -161,21 +161,15 @@ if ( ! -e ${out}_asl_col_m0.nii.gz || $force == 1 ) then
 endif
 
 if ( ! -e ${out}_tse_to_asl_col_m0.nii.gz || $force == 1 ) then
-	#Register collated m0 to tse
-	set cmd = ( $FSLDIR/bin/flirt -in ${out}_asl_col_m0 -ref ${tse} -dof 6 -cost mutualinfo )
-	set cmd = ( $cmd -omat ${out}_asl_col_m0_to_tse.mat -out ${out}_asl_col_m0_to_tse )
-	echo $cmd |& tee -a $log
-	$cmd |& tee -a $log
-	
-	#Invert transformation matrix to get tse to m0
-	set cmd = ( $FSLDIR/bin/convert_xfm -inverse ${out}_asl_col_m0_to_tse.mat )
+	#Register tse to collated m0
+	set cmd = ( $FSLDIR/bin/flirt -in ${tse} -ref ${out}_asl_col_m0 -dof 6 -cost mutualinfo )
 	set cmd = ( $cmd -omat ${out}_tse_to_asl_col_m0.mat )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 	
 	#Resample tse
 	set cmd = ( $FSLDIR/bin/applywarp -i ${tse} -r ${out}_asl_col_m0 -o ${out}_tse_to_asl_col_m0 )
-	set cmd = ( $cmd --premat=${out}_tse_to_asl_col_m0.mat )
+	set cmd = ( $cmd --premat=${out}_tse_to_asl_col_m0.mat --super --superlevel=4 --interp=spline )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
@@ -255,7 +249,7 @@ foreach run ( $run1 $run2 )
 			set num = `echo $vol | sed 's/vol//g' | sed 's/.nii.gz//g'`
 			set cmd = ( $FSLDIR/bin/applywarp -i $vol -o ${vol:r:r}_transformed -r $vol )
 			set cmd = ( $cmd --premat=${out}_asl_${count}_mcf.mat/MAT_${num} )
-			set cmd = ( $cmd --postmat=${out}_asl_${count}_m0_to_tse_${count}.mat )
+			set cmd = ( $cmd --postmat=${out}_asl_${count}_m0_to_tse_${count}.mat --interp=sinc )
 			echo $cmd |& tee -a $log
 		 	$cmd |& tee -a $log
 		end
