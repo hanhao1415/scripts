@@ -1,8 +1,14 @@
 #!/bin/tcsh
+#Tyler Blazey, 2011.
 
+#######
+#Usage#
+#######
+
+set program = $0:t
 if ($#argv == 0) then
 	echo ""
-	echo "epi_unwarp: A basic wrapper for FSL's field map tools"
+	echo "${program}: A basic wrapper for FSL's field map tools"
 	echo ""
 	echo "Usage:"
 	echo ""
@@ -13,33 +19,32 @@ if ($#argv == 0) then
 	echo "	-dwell: EPI dwell time. In milliseconds"
 	echo "	-te: EPI echo time. In milliseconds"
 	echo "	-delta: Difference between field map echo times. In milleseconds."
-	echo "	-reg: Field map regulation. Takes despike, smooth, median, or none." 
 	echo ""
 	echo "Optional Arguments:" 
+	echo "	-reg: Field map regulation. Takes despike, smooth, median, or none. Default is despike."
 	echo "	-frame:	EPI frame to extract for registration. Default is 0."
 	echo "	-o: Outpath. Default is unwarp"
 	echo "	-r: Outroot. Default is blank"
-	echo "	-thres:	Signal loss threshold. Default is 0.1"
-	echo "	-dthres: Despike threshold. For use with -reg despike. Default is 2.1"
+	echo "	-thresh: Signal loss threshhold. Default is 0.1"
+	echo "	-dthresh: Despike threshhold. For use with -reg despike. Default is 2.1"
 	echo " 	-mm3: Size of kernel to use with -reg smooth. Default is 5"
 	echo " 	-dir: Direction of epi unwarp. Default is y-. Takes x,x-,y,y-,z,z-"
-	echo " 	-nms: Turn off subtraction of fieldmap by median. Turned on by default."
-	echo "	-cmask: Turn off aggressive brain masking of fieldmap. On by default."
 	echo "	-nounwrap: Turn off phase unwrapping. On by default."
 	echo "	-dtimc: Due eddy correction for dti input. Will only resample once."
 	echo "	-boldmc: Apply mcflirt to bold input. Will only resample once."
-	echo "	-freepath: Path to freesurfer subject. Will register to brainmask with one resampling."
-	echo "	Note: Will combine with motion correction (only 1 resampling) if -boldmc is used."
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
 	echo "	Standard CAP BOLD parameters: Dwell Time=.47ms, Echo Time=27ms."
 	echo "	Standard CAP Field Map delta TE=2.46ms."
-	echo ""
-	
-	
+	echo ""	
 	exit
 endif
+
+
+#################
+#Parse Arguments#
+#################
 
 while ($#argv > 0) 
 	set flag = $argv[1]; shift;
@@ -60,140 +65,145 @@ while ($#argv > 0)
 			set dwell = `echo "$argv[1]/1000" | bc -l`; shift; breaksw;
 		case -delta:
 			set delta = `echo "$argv[1]/1000" | bc -l`; shift; breaksw;
-		case -thres
-			set thres = `echo "1-$argv[1]" | bc -l` ; shift; breaksw;
+		case -thresh
+			set thresh = `echo "1-$argv[1]" | bc -l` ; shift; breaksw;
 		case -frame:
 			set frame = $argv[1]; shift; breaksw;
 		case -reg:
 			set reg = $argv[1]; shift; breaksw;
-		case -dthres:
-			set dthres = $argv[1]; shift; breaksw;
+		case -dthresh:
+			set dthresh = $argv[1]; shift; breaksw;
 		case -mm3:
 			set mm3 = $argv[1]; shift; breaksw;
 		case -dir:
 			set dir = $argv[1]; shift; breaksw;
-		case -nms:
-		 	set median_shift = 0; breaksw;
-		case -cmask:
-			set masking = 0; breaksw;
 		case -nounwrap:
 			set unwrap = 0; breaksw;
 		case -dtimc:
 			set dtimc = 1; breaksw;
 		case -boldmc
 			set boldmc = 1; breaksw;
-		case -freepath
-			set freepath = $argv[1]; shift; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
-			exit
+			exit 1
 	endsw
 end
 
-#check to make sure all required options have been set
-if ( $?mag == 0 || $?epi == 0 || $?field == 0  || $?dwell == 0 || $?te == 0 || $?delta == 0 \
-	|| $?reg == 0 ) then
+#############################
+#Check options, set defaults#
+#############################
+
+#Check to make sure all required options have been set
+if ( $?mag == 0 || $?epi == 0 || $?field == 0  || $?dwell == 0 || $?te == 0 || $?delta == 0  ) then
 	echo "Missing required arguments. See usage"
-	exit
+	exit 1
 endif
 
-#set defaults
+#Set defaults
 if ($?frame == 0)	set frame = 0; 
 if ($?outroot == 0)	set outroot = ""
-if ($?thres == 0)	set thres = 0.9
+if ($?thresh == 0)	set thresh = 0.9
 if ($?outpath == 0) set outpath = "unwarp"
 if (! -d $outpath)	mkdir $outpath
-if ($reg == "despike" && $?dthres == 0) set dthres = 2.1
+if ($?reg == 0) set reg = "despike"
+if ($reg == "despike" && $?dthresh == 0) set dthresh = 2.1
 if ($reg == "smooth" && $?mm3 == 0) set mm3 = 5
 if ($?dir == 0) set dir = "y-"
-if ($?median_shift == 0) set median_shift = 1
-if ($?masking == 0) set masking = 1
 if ($?unwrap == 0) set unwrap = 1
 
-#check to make sure -reg is set correctly
+#Check to make sure -reg is set correctly
 set reg_options = ( "smooth" "median" "none" "despike"); echo $reg_options | grep -qw $reg;
 if ( $? == 1 ) then
 	echo "-reg option $reg not known. See usage"
-	exit
+	exit 1
 endif
 
-#check to see if -dir is set correctly
+#Check to see if -dir is set correctly
 set dir_options = ( "x" "x-" "y" "y-" "z" "z-"); echo $dir_options | grep -qw $dir;
 if ( $? == 1 ) then
 	echo "-dir option $dir not known. See usage"
-	exit
+	exit 1
 endif
 
-
-#copy images over
-imcp $mag ${outpath}/${outroot}mag; imcp $epi ${outpath}/${outroot}epi; imcp $field \
-	${outpath}/${outroot}field;
-
+#####################################
+#Preproc, Unit Conversion, Unwraping#
+#####################################
+set echo
+#Copy images over
+imcp $mag ${outpath}/${outroot}mag; imcp $epi ${outpath}/${outroot}epi
+imcp $field ${outpath}/${outroot}field;
 cd $outpath
 
-#check to see if the field map range is as expected
+#Check to see if the field map range is as expected
 set range = `fslstats ${outroot}field -R`.
 if ( $range[1] != -4096.000000 || $range[2] != 4092.000000 ) then
 	echo "Range of field map is not -4096.000000 to 4092.000000. Exiting..."
-	exit
+	exit 1
 endif
 
-set echo
-
-#convert field map to radians
+#Convert field map to radians
 fslmaths ${outroot}field -div 4096 -mul 3.14159265 ${outroot}field
 
 #If user wants, unwrap phase with prelude.
 if ($unwrap == 1) prelude -p ${outroot}field -a ${outroot}mag -o ${outroot}field
 
+#Convert to radians/second
 fslmaths ${outroot}field -div $delta ${outroot}field
 
-#Brain extract epi and then extract frame for registration
+###############
+#Brain Masking#
+###############
+
+#Extract epi frame, then brain extract
 fslroi ${outroot}epi ${outroot}epi_${frame} $frame 1
-bet ${outroot}epi_${frame} ${outroot}epi_${frame}_brain -m -f .2
+bet ${outroot}epi_${frame} ${outroot}epi_${frame}_brain -m -f .2 -R
 
+#Create brain mask for magnitude
+bet ${outroot}mag ${outroot}mag_brain -m -R
 
-#create brain mask for magnitude
-bet ${outroot}mag ${outroot}mag_brain -m
+#Create inverted field map brain mask
+fslmaths ${outroot}field -abs -bin -mas ${outroot}mag_brain_mask -mul -1 -add 1 -bin \
+		 ${outroot}field_inv_brain_mask
+		 
+#Cluster inverted brain mask
+cluster -i ${outroot}field_inv_brain_mask -t 0.5 --no_table \
+		-o ${outroot}field_inv_brain_mask_clust
+		
+#Save intensity of largest cluster 
+set max = `fslstats ${outroot}field_inv_brain_mask_clust -R | awk '{print $2}'`
+#Threshhold the image by max, then invert again. Get a new, tighter brain mask.
+fslmaths ${outroot}field_inv_brain_mask_clust -thr $max -bin -mul -1 -add 1 -bin \
+		 -mas ${outroot}mag_brain_mask ${outroot}mag_brain_mask
+		 
+#Use the new brain mask on the field map
+fslmaths ${outroot}field -mas ${outroot}mag_brain_mask ${outroot}field
 
-#unless user overides, run FEAT style agressive brain masking on field map
-if ( $masking == 1) then
-	#create inverted field map brain mask
-	fslmaths ${outroot}field -abs -bin -mas ${outroot}mag_brain_mask -mul -1 -add 1 -bin \
-	${outroot}field_inv_brain_mask
-	#cluster inverted brain mask
-	cluster -i ${outroot}field_inv_brain_mask -t 0.5 --no_table \
-	-o ${outroot}field_inv_brain_mask_clust
-	#save intensity of largest cluster 
-	set max = `fslstats ${outroot}field_inv_brain_mask_clust -R | awk '{print $2}'`
-	#threshold the image by mask, then invert again. Get a new, tighter brain mask.
-	fslmaths ${outroot}field_inv_brain_mask_clust -thr $max -bin -mul -1 -add 1 -bin \
-	-mas ${outroot}mag_brain_mask ${outroot}mag_brain_mask
-	#use the new brain mask on the field map
-	fslmaths ${outroot}field -mas ${outroot}mag_brain_mask ${outroot}field
-	#get a 50% brain mask
-	set fifty = `fslstats ${outroot}mag_brain -P 98 | awk '{print ( $1 / 2 ) }'`
-	fslmaths ${outroot}mag_brain -thr $fifty -bin ${outroot}mag_brain_fifty_mask
-	#erode the original brain mask
-	fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
-	#add eroded and fifty masks
-	fslmaths ${outroot}mag_brain_mask_eroded -add ${outroot}mag_brain_fifty_mask -thr 0.5 \
-	-bin ${outroot}mag_brain_mask
-	#mask the field map again
-	fslmaths ${outroot}field -mas ${outroot}mag_brain_mask ${outroot}field
-	#eroded brain mask again
-	fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
-else
-	#apply conservative masking to fieldmap
-	fslmaths ${outroot}field -mas ${outroot}mag_brain_mask ${outroot}field
-	imcp ${outroot}mag_brain_mask ${outroot}mag_brain_mask_eroded
-endif
+#Get a 50% brain mask
+set fifty = `fslstats ${outroot}mag_brain -P 98 | awk '{print ( $1 / 2 ) }'`
+fslmaths ${outroot}mag_brain -thr $fifty -bin ${outroot}mag_brain_fifty_mask
 
-#create filter
+#Erode the original brain mask
+fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
+
+#Add eroded and fifty masks
+fslmaths ${outroot}mag_brain_mask_eroded -add ${outroot}mag_brain_fifty_mask -thr 0.5 \
+		 -bin ${outroot}mag_brain_mask
+		 
+#Mask the field map again
+fslmaths ${outroot}field -mas ${outroot}mag_brain_mask ${outroot}field
+
+#Erode brain mask again
+fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
+
+###########
+#Filtering#
+###########
+
+#Create filter
 switch ($reg)
 	case "despike":
 		fugue --loadfmap=${outroot}field --savefmap=${outroot}field_filter \
-		--mask=${outroot}mag_brain_mask --despike --despikethreshold=$dthres
+		--mask=${outroot}mag_brain_mask --despike --despikethreshhold=$dthresh
 		breaksw
 	case "smooth":
 		fugue --loadfmap=${outroot}field --savefmap=${outroot}field_filter \
@@ -207,88 +217,71 @@ switch ($reg)
 		imcp ${outroot}field ${outroot}field_filter
 endsw
 
-#apply the filter to brain edges
+#Apply the filter to brain edges
 fslmaths ${outroot}field_filter -sub ${outroot}field -mas ${outroot}mag_brain_mask_eroded -add \
-	${outroot}field ${outroot}field
+		 ${outroot}field ${outroot}field
 
-#if median_shift is turned on, subtract field map by the median for non-zero voxels. 
-#Median will be shifted to 0
-if ($median_shift == 1) then
-	set median = `fslstats ${outroot}field -k ${outroot}mag_brain_mask -P 50`
-	fslmaths ${outroot}field -sub $median ${outroot}field
-endif
+#Shift median to 0
+set median = `fslstats ${outroot}field -k ${outroot}mag_brain_mask -P 50`
+fslmaths ${outroot}field -sub $median ${outroot}field
 
-#estimate signal loss from fieldmap. Range goes from 0 (no signal) to 1 (full signal)
+#Estimate signal loss from fieldmap. Range goes from 0 (no signal) to 1 (full signal)
 sigloss -i ${outroot}field --te=${te} -m ${outroot}mag_brain_mask -s ${outroot}signal_loss
 
-#multiply mag brain by signal loss image. Will result in a mag brain with areas of signal loss.
+#Multiply mag brain by signal loss image. Will result in a mag brain with areas of signal loss.
 fslmaths ${outroot}signal_loss -mul ${outroot}mag_brain ${outroot}mag_brain_signal_lossed -odt float
 
-#run fugue on the signal lossed magnitude image. Will distort it according to the field map. 
+#####################################
+#FUGUE, Registration, Transformation#
+#####################################
+
+#Run fugue on the signal lossed magnitude image. Will distort it according to the field map. 
 #Then do the same thing for the signal_loss fmap image.
 fugue -i ${outroot}mag_brain_signal_lossed --loadfmap=${outroot}field \
-	--mask=${outroot}mag_brain_mask --dwell=$dwell -w ${outroot}mag_brain_signal_lossed_distorted \
-	--nokspace --unwarpdir=$dir
+	  --mask=${outroot}mag_brain_mask -w ${outroot}mag_brain_signal_lossed_distorted \
+	  --nokspace --unwarpdir=$dir --dwell=$dwell 
 fugue -i ${outroot}signal_loss --loadfmap=${outroot}field --mask=${outroot}mag_brain_mask \
-	--dwell=$dwell -w ${outroot}signal_loss_distorted --nokspace --unwarpdir=$dir
+	  --dwell=$dwell -w ${outroot}signal_loss_distorted --nokspace --unwarpdir=$dir
 
-#threshold the distorted signal loss brain according to user chosen signal loss threshold
-fslmaths ${outroot}signal_loss_distorted -thr $thres ${outroot}signal_loss_distorted
+#Threshhold the distorted signal loss brain according to user chosen signal loss threshhold
+fslmaths ${outroot}signal_loss_distorted -thr $thresh ${outroot}signal_loss_distorted
 
-#register the distorted magnitude to the distorted functional. Output a transformation file only.
-#Use the thresholded signal loss brain as weighting (areas with 0 will be ignored)
+#Register the distorted magnitude to the distorted functional. Output a transformation file only.
+#Use the threshholded signal loss brain as weighting (areas with 0 will be ignored)
 flirt -in ${outroot}mag_brain_signal_lossed_distorted -ref ${outroot}epi_${frame}_brain \
-	-omat ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat -dof 6 \
-	-inweight ${outroot}signal_loss_distorted
+	  -omat ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat -dof 6 \
+	  -inweight ${outroot}signal_loss_distorted
 
-#apply the created transform to the field map and brain mask
+#Apply the created transform to the field map and brain mask
 flirt -in ${outroot}field -ref ${outroot}epi_${frame}_brain \
-	-init ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
-	-applyxfm -out ${outroot}field_to_${outroot}epi_${frame}_brain
+	  -init ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
+	  -applyxfm -out ${outroot}field_to_${outroot}epi_${frame}_brain
 flirt -in ${outroot}mag_brain_mask -ref ${outroot}epi_${frame}_brain \
-	-init ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
-	-applyxfm -out ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain
+	  -init ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
+	  -applyxfm -out ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
+	  -interp nearestneighbour
 
-#run fugue using the registerted field map on the distorted epi. 
+#Run fugue using the registerted field map on the distorted epi. 
 #Will undistort the first frame epi and save the shift map that does this.
 fugue --loadfmap=${outroot}field_to_${outroot}epi_${frame}_brain \
-	--dwell=$dwell --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
-	-i ${outroot}epi_${frame}_brain -u ${outroot}epi_${frame}_brain_undistorted --unwarpdir=$dir \
-	--saveshift=${outroot}epi_${frame}_brain_undistorted_shift
+	  --dwell=$dwell --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
+	  -i ${outroot}epi_${frame}_brain -u ${outroot}epi_${frame}_brain_undistorted --unwarpdir=$dir \
+	  --saveshift=${outroot}epi_${frame}_brain_undistorted_shift
 
-#convert the shiftwarp to an absolute warp
+#Convert the shiftwarp to an absolute warp
 convertwarp -s ${outroot}epi_${frame}_brain_undistorted_shift \
-	-o ${outroot}epi_${frame}_brain_undistorted_shift_warp -r ${outroot}epi_${frame}_brain \
-	--shiftdir=$dir
+		    -o ${outroot}epi_${frame}_brain_undistorted_shift_warp -r ${outroot}epi_${frame}_brain \
+	        --shiftdir=$dir
+	        
+###################
+#Motion Correction#
+###################
 
-#lets apply some warps
-
-#apply the warp to the whole series, don't add any other transforms
-applywarp -i ${outroot}epi -o ${outroot}epi_undistorted \
---mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
--w ${outroot}epi_${frame}_brain_undistorted_shift_warp -r ${outroot}epi --abs
-
-#if user wants, register undistorted image to freesurfer brain
-if ( $?freepath == 1 ) then
-	#convert brainmask to nifti and then register undistorted ref frame to it
-	mri_convert $freepath/mri/brainmask.mgz brainmask.nii.gz	
-	flirt -in ${outroot}epi_${frame}_brain_undistorted -ref brainmask.nii.gz -dof 6 \
-	-omat ${outroot}epi_${frame}_brain_to_brainmask.mat -o ${outroot}epi_${frame}_brain_to_brainmask
-	
-	#apply the transformation to the brainmask so that you have a reference mask
-	flirt -in ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain -ref brainmask.nii.gz \
-	-applyxfm -init ${outroot}epi_${frame}_brain_to_brainmask.mat \
-	-out ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain_to_brainmask \
-	-interp nearestneighbour	
-endif
-
-# do motion correction if user wants
 if ( $?dtimc == 1  || $?boldmc == 1) then
-	fslroi ${outroot}epi ${outroot}epi_${frame} $frame 1
 	fslsplit ${outroot}epi ${outroot}epi_tmp
 	foreach tmp ( ${outroot}epi_tmp* )
 		
-		#create correct pre matrices
+		#Create correct pre matrices
 		if ( $?dtimc == 1 ) then
 			set tmp = `remove_ext $tmp`
 			echo $tmp > eddycorrect.log
@@ -305,25 +298,13 @@ if ( $?dtimc == 1  || $?boldmc == 1) then
 			set pre = "${outroot}epi_mcf.mat/MAT_${num}"
 		endif
 		
-		#apply freesurfer transform with motion correction for bold only
-		if ( $?freepath == 1 && $?boldmc == 1) then
-			applywarp -i $tmp -o ${tmp}_undistorted_mc_free -r brainmask --abs \
-			--mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain_to_brainmask \
-			-w ${outroot}epi_${frame}_brain_undistorted_shift_warp \
-			--premat=$pre --postmat=${outroot}epi_${frame}_brain_to_brainmask.mat
-		endif
-		
-		#apply motion correction only
+		#Apply motion correction
 		applywarp -i $tmp -o ${tmp}_undistorted_mc -r ${outroot}epi --abs \
-		--mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
-		-w ${outroot}epi_${frame}_brain_undistorted_shift_warp --premat=$pre
+				  --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
+		          -w ${outroot}epi_${frame}_brain_undistorted_shift_warp --premat=$pre
 	end
 	
 	fslmerge -t ${outroot}epi_undistorted_mc ${outroot}epi_tmp*_undistorted_mc.nii.gz
-	if ( $?freepath == 1 && $?boldmc == 1 ) then
-		fslmerge -t ${outroot}epi_undistorted_mc_free ${outroot}epi_tmp*_undistorted_mc_free.nii.gz
-	endif
 	rm ${outroot}epi_tmp*	
 endif
 		
-echo "epi_unwarp complete"
