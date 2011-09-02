@@ -163,7 +163,7 @@ endif
 if ( ! -e ${out}_tse_to_asl_col_m0.nii.gz || $force == 1 ) then
 	#Register tse to collated m0
 	set cmd = ( $FSLDIR/bin/flirt -in ${tse} -ref ${out}_asl_col_m0 -dof 6 -cost mutualinfo )
-	set cmd = ( $cmd -omat ${out}_tse_to_asl_col_m0.mat )
+	set cmd = ( $cmd -omat ${out}_tse_to_asl_col_m0.mat -nosearch )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 	
@@ -231,7 +231,7 @@ foreach run ( $run1 $run2 )
 	if ( ! -e  ${out}_asl_${count}_m0.nii.gz || ! -e ${out}_asl_${count}_m0_to_tse_${count}.mat \
 			|| $force == 1 ) then
 		set cmd = ( $FSLDIR/bin/flirt -in ${out}_asl_${count}_m0 -ref ${out}_tse_${count} )
-		set cmd = ( $cmd -omat ${out}_asl_${count}_m0_to_tse_${count}.mat -dof 6 )
+		set cmd = ( $cmd -omat ${out}_asl_${count}_m0_to_tse_${count}.mat -dof 6 -nosearch )
 		set cmd = ( $cmd -cost mutualinfo -out ${out}_asl_${count}_m0_to_tse_${count} )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log
@@ -377,8 +377,8 @@ end
 
 #Create a thresholded gray matter mask
 if ( ! -e ${out}_orig_masked_pve_1_mask.nii.gz || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_${pve}_to_asl_col_mc_m0_brain )
-	set cmd = ( $cmd -thr $gthresh -bin ${out}_orig_masked_pve_${pve}_to_asl_col_mc_m0_brain_mask )								 
+	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain )
+	set cmd = ( $cmd -thr $gthresh -bin ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain_mask )								 
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
