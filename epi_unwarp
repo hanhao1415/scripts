@@ -128,6 +128,7 @@ endif
 #####################################
 #Preproc, Unit Conversion, Unwraping#
 #####################################
+
 set echo
 #Copy images over
 imcp $mag ${outpath}/${outroot}mag; imcp $epi ${outpath}/${outroot}epi
@@ -203,7 +204,7 @@ fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
 switch ($reg)
 	case "despike":
 		fugue --loadfmap=${outroot}field --savefmap=${outroot}field_filter \
-		--mask=${outroot}mag_brain_mask --despike --despikethreshhold=$dthresh
+		--mask=${outroot}mag_brain_mask --despike --despikethreshold=$dthresh
 		breaksw
 	case "smooth":
 		fugue --loadfmap=${outroot}field --savefmap=${outroot}field_filter \
