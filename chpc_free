@@ -383,10 +383,11 @@ foreach session ( $sessions )
 		echo "export RELEASE=/export/4dfp/" >> ${session}.batch
 		echo 'export PATH=/export/4dfp/:${PATH}' >> ${session}.batch
 		echo "~/scripts/atl_reg ${session_data_path}/${session}.params" >> ${session}.batch
-		#copy batch and params to freesurfer session_folder
-		echo "cp $session_data_path/${session}.batch $session_data_path/${session}.params"\
-		"$session_free_path/" >> ${session}.batch
 	endif
+	
+	#copy batch and params to freesurfer session_folder
+	echo "cp $session_data_path/${session}.batch $session_data_path/${session}.params"
+	     "$session_free_path/" >> ${session}.batch
 	
 	#unless user overrides, submit in a group
 	if ( $?sub == 0 ) then
