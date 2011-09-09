@@ -203,23 +203,23 @@ fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
 #Create filter
 switch ($reg)
 	case "despike":
-		fugue --loadfmap=${outroot}phase --savefmap=${outroot}phase_filter \
+		fugue --loadfmap=${outroot}phase --savefmap=${outroot}phase_filter_${reg} \
 		--mask=${outroot}mag_brain_mask --despike --despikethreshold=$dthresh
 		breaksw
 	case "smooth":
-		fugue --loadfmap=${outroot}phase --savefmap=${outroot}phase_filter \
+		fugue --loadfmap=${outroot}phase --savefmap=${outroot}phase_filter_${reg}  \
 		--mask=${outroot}mag_brain_mask -s $mm3
 		breaksw
 	case "median":
-		fugue --loadfmap=${outroot}phase --savefmap=${outroot}phase_filter \
+		fugue --loadfmap=${outroot}phase --savefmap=${outroot}phase_filter_${reg}  \
 		--mask=${outroot}mag_brain_mask -m
 		breaksw
 	case "none":
-		imcp ${outroot}phase ${outroot}phase_filter
+		imcp ${outroot}phase ${outroot}phase_filter_${reg} 
 endsw
 
 #Apply the filter to brain edges
-fslmaths ${outroot}phase_filter -sub ${outroot}phase -mas ${outroot}mag_brain_mask_eroded -add \
+fslmaths ${outroot}phase_filter_${reg}  -sub ${outroot}phase -mas ${outroot}mag_brain_mask_eroded -add \
 		 ${outroot}phase ${outroot}phase
 
 #Shift median to 0
@@ -278,7 +278,7 @@ convertwarp -s ${outroot}epi_${frame}_brain_undistorted_shift \
 #Motion Correction#
 ###################
 
-if ( $?dtimc == 1  || $?boldmc == 1) then
+if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	fslsplit ${outroot}epi ${outroot}epi_tmp
 	foreach tmp ( ${outroot}epi_tmp* )
 		
