@@ -219,8 +219,8 @@ switch ($reg)
 endsw
 
 #Apply the filter to brain edges
-fslmaths ${outroot}phase_filter_${reg}  -sub ${outroot}phase -mas ${outroot}mag_brain_mask_eroded -add \
-		 ${outroot}phase ${outroot}phase
+fslmaths ${outroot}phase_filter_${reg}  -sub ${outroot}phase -mas ${outroot}mag_brain_mask_eroded \
+		 -add ${outroot}phase ${outroot}phase
 
 #Shift median to 0
 set median = `fslstats ${outroot}phase -k ${outroot}mag_brain_mask -P 50`
