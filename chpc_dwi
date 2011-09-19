@@ -119,7 +119,7 @@ foreach session ( $sessions )
 	#run ArcCheck twice. Once to get sequence names, again to get status of sequences.
 	set arc_string = `ArcCheck -f $readfile $sequences -u -r $quest`
 	set arc_string_check = `ArcCheck -f $readfile $sequences -u -r $quest -a`
-	
+
 	#check to make sure all sequences are usable
 	echo $arc_string_check | grep -qi "No" 
 	if ( $? == 0 ) then

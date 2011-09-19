@@ -263,7 +263,7 @@ foreach scan ($image_array)
 				while ( $count <= $dti_number )
 					#only include non-processed sequences in unpacking file.
 					#Sed is needed to avoid a divide by 0 error
-					set fov = `grep -A4 "SCAN NUMBER: $g_result[$run_number]" $readfile | tail -1 \
+					set fov = `grep -A4 -w "SCAN NUMBER: $g_result[$run_number]" $readfile | tail -1 \
 					| sed 's/\//by/g'`
 					if ( $fov[3] == "1008by1008" || $fov[3] == "768by768" ) then
 						set run_array = ( $run_array $g_result[$run_number] "dti" )
@@ -295,6 +295,7 @@ endif
 
 #output unpacks file if user wanted. Uses the following format:- RunNumber Subdir Format Name
 #See unpacksdicomdir for more info...
+echo $run_array
 if ( $?unpacks == 1 ) then
 	@ count = 1; @ runs = $#run_array / 2; @ seq = 1;
 	while ( $count <= $runs )
