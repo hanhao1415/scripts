@@ -475,10 +475,10 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg \
               ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std )
 	
 	#Transform cbf to Freesurfer subject volume
-	if ( ! -e ${cbf}_to_orig_masked.nii.gz || $force == 1 ) then
+	if ( ! -e ${cbf}_to_orig_masked.nii.gz || $force == 0 ) then
 		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${out}_orig_masked )
 		set cmd = ( $cmd --premat=${out}_asl_col_mc_m0_brain_to_orig_masked.mat )
-		set cmd = ( $cmd --out=${cbf}_to_orig_masked.nii.gz )
+		set cmd = ( $cmd --out=${cbf}_to_orig_masked.nii.gz --mask=${out}_orig_masked )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log		
 	endif
