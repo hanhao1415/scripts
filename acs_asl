@@ -38,8 +38,7 @@ if ( $#argv == 0 ) then
 	echo "	-fwhm: FWHM for surface smoothing. Default is 5."
 	echo "	-force: Run command even if output exists."
 	echo "	-gthresh: Threshold for gray matter mask. Default is .3"
-	echo "	-lthr: Lower threshold for CBF ROI sampling. Default is 20"
-	echo "	-uthr: Upper threshold for CBF ROI sampling. Default is 150"
+	echo "	-roithresh: Threshold for ROI sampling. Default is 1.5"
 	echo ""
 	echo "Note: Script requires FSL, FreeSurfer, Numpy, and Nibabel"
 	exit
@@ -48,7 +47,7 @@ endif
 #Set defaults
 set mthresh = 2.5; set fwhm = 5; set simple = 0; set avgperf = 0; set out4d = ""; set unfilt = "";
 set kernel = 5; set nocsf = ""; set force = 0; set gthresh = 0.3; set sthresh = 1.5;
-set lthr = 20; set uthr = 150;
+set roithresh = 1.5;
 
 #Parse arguments
 set args = ( $argv )
@@ -93,10 +92,8 @@ while ( $#argv > 0 )
 			set force = 1; breaksw;
 		case -gthresh:
 			set gthresh = $argv[1]; shift; breaksw;
-		case -lthr:
-			set lthr = $argv[1]; shift; breaksw;
-		case -uthr:
-			set uthr = $argv[1]; shift; breaksw;
+		case -roithresh:
+			set roithresh = $argv[1]; shift; breaksw;
 		default:
 			"Option $flag not recognized. See usage"
 			exit 1
@@ -474,7 +471,8 @@ if ( ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_avg.nii.gz \
 endif
 
 foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg \
-              ${out}_asl_col_mc_pvc${kernel}_cbf_var ${out}_asl_col_mc_cbf_var  )
+              ${out}_asl_col_mc_pvc${kernel}_cbf_var ${out}_asl_col_mc_cbf_var \
+              ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std )
 	
 	#Transform cbf to Freesurfer subject volume
 	if ( ! -e ${cbf}_to_orig_masked.nii.gz || $force == 1 ) then
@@ -486,9 +484,12 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg \
 	endif
 	
 	#Get reasonable output mask
-	if ( ! -e ${cbf}_to_orig_masked_${lthr}_to_${uthr}_mask.nii.gz || $force == 1 ) then
-		set cmd = ( $FSLDIR/bin/fslmaths ${cbf}_to_orig_masked -lthr $lthr -uthr $uthr -bin )
-		set cmd = ( $cmd ${cbf}_to_orig_masked_${lthr}_to_${uthr}_mask )
+	if (( $cbf == ${out}_asl_col_mc_pvc${kernel}_cbf_std || $cbf == ${out}_asl_col_mc_cbf_std ) \
+			&& ( ! -e ${cbf}_outlier_mask.nii.gz || $force == 1)) then
+		set mean_std = `fslstats $cbf -k ${out}_asl_col_mc_m0_brain_mask -m`
+		set outlier_std = `echo "$mean_std * $roithresh" | bc -l`
+		set cmd = ( $FSLDIR/bin/fslmaths ${cbf}_to_orig_masked -uthr $outlier_std -bin )
+		set cmd = ( $cmd ${cbf}_outlier_mask )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log
 	endif
