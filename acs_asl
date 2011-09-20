@@ -312,11 +312,18 @@ if ( ! -e ${out}_orig_masked.nii.gz || $force == 1 ) then
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 	
-	#Use mri_gcut to get a more aggressive mask
+	#Use mri_gcut to get more agressive masking
 	set cmd = ( $FREESURFER_HOME/bin/mri_gcut ${out}_orig_brain_masked.nii.gz )
 	set cmd = ( $cmd ${out}_orig_masked.nii.gz )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
+endif
+
+#Binarize to get orig mask
+if ( ! -e ${out}_orig_mask.nii.gz || $force == 1 ) then
+	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked -bin ${out}_orig_mask ) 
+	echo $cmd |& tee -a $log
+	$cmd |& tee -a $log
 endif
 
 #Register ASL to FreeSurfer T1
@@ -380,7 +387,7 @@ foreach pve ( 0 1 2 )
 end
 
 #Create a thresholded gray matter mask
-if ( ! -e ${out}_orig_masked_pve_1_mask.nii.gz || $force == 1 ) then
+if ( ! -e ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain_mask.nii.gz || $force == 1 ) then
 	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain )
 	set cmd = ( $cmd -thr $gthresh -bin ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain_mask )								 
 	echo $cmd |& tee -a $log
@@ -478,7 +485,7 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg \
 	if ( ! -e ${cbf}_to_orig_masked.nii.gz || $force == 0 ) then
 		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${out}_orig_masked )
 		set cmd = ( $cmd --premat=${out}_asl_col_mc_m0_brain_to_orig_masked.mat )
-		set cmd = ( $cmd --out=${cbf}_to_orig_masked.nii.gz --mask=${out}_orig_masked )
+		set cmd = ( $cmd --out=${cbf}_to_orig_masked.nii.gz --mask=${out}_orig_mask )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log		
 	endif
