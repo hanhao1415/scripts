@@ -505,11 +505,11 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std \
 	#Get stats from Freesurfer segmentations
 	if ( ( $cbf == ${out}_asl_col_mc_pvc${kernel}_cbf_avg || $cbf == ${out}_asl_col_mc_cbf_avg ) \
 			&& ( ! -e ${cbf}_stats.txt || $force == 1 )) then
-		set mask = `echo $cbf | sed 's/avg/std/g'`
+		set mask = `echo ${cbf}_to_orig_masked.nii.gz | sed 's/avg/std/g'`
 		set cmd = ( $FREESURFER_HOME/bin/mri_segstats --i ${cbf}_to_orig_masked.nii.gz )
 		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt --sum ${cbf}_stats.txt )
 		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subject}/mri/aparc+aseg.mgz )
-		set cmd = ( $cmd --mask ${mask}.nii.gz )
+		set cmd = ( $cmd --mask $mask )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	endif
