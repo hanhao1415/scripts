@@ -145,8 +145,13 @@ endif
 #Convert field map to radians
 fslmaths ${outroot}phase -div 4096 -mul 3.14159265 ${outroot}phase
 
+#Create brain mask for magnitude
+bet ${outroot}mag ${outroot}mag_brain -m -R
+
 #If user wants, unwrap phase with prelude.
-if ($unwrap == 1) prelude -p ${outroot}phase -a ${outroot}mag -o ${outroot}phase
+if ($unwrap == 1) then
+	prelude -p ${outroot}phase -a ${outroot}mag -o ${outroot}phase -m ${outroot}mag_brain_mask
+endif
 
 #Convert to radians/second
 fslmaths ${outroot}phase -div $delta ${outroot}phase
@@ -158,9 +163,6 @@ fslmaths ${outroot}phase -div $delta ${outroot}phase
 #Extract epi frame, then brain extract
 fslroi ${outroot}epi ${outroot}epi_${frame} $frame 1
 bet ${outroot}epi_${frame} ${outroot}epi_${frame}_brain -m -f .2 -R
-
-#Create brain mask for magnitude
-bet ${outroot}mag ${outroot}mag_brain -m -R
 
 #Create inverted field map brain mask
 fslmaths ${outroot}phase -abs -bin -mas ${outroot}mag_brain_mask -mul -1 -add 1 -bin \
