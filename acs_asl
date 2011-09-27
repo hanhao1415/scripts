@@ -319,9 +319,9 @@ if ( ! -e ${out}_orig_masked.nii.gz || $force == 1 ) then
 	$cmd |& tee -a $log	
 endif
 
-#Binarize to get orig mask
+#Get orig mask
 if ( ! -e ${out}_orig_mask.nii.gz || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked -bin ${out}_orig_mask ) 
+	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked -bin ${out}_orig_mask )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
@@ -387,7 +387,7 @@ foreach pve ( 0 1 2 )
 	endif
 end
 
-#Create a thresholded gray matter mask
+#Create a thresholded gray matter mask in asl space
 if ( ! -e ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain_mask.nii.gz || $force == 1 ) then
 	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain )
 	set cmd = ( $cmd -thr $gthresh -bin ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain_mask )								 
@@ -494,7 +494,7 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std \
 	#Get reasonable output mask
 	if (( $cbf == ${out}_asl_col_mc_pvc${kernel}_cbf_std || $cbf == ${out}_asl_col_mc_cbf_std ) \
 			&& ( ! -e ${cbf}_to_orig_masked_outlier_mask.nii.gz || $force == 1)) then
-		set mean_std = `fslstats ${cbf}_to_orig_masked -k ${out}_orig_mask -m`
+		set mean_std = `fslstats ${cbf}_to_orig_masked -k ${out}_orig_masked_seg_1.nii.gz -m`
 		set outlier_std = `echo "$mean_std * $roithresh" | bc -l`
 		set cmd = ( $FSLDIR/bin/fslmaths ${cbf}_to_orig_masked -uthr $outlier_std -bin )
 		set cmd = ( $cmd ${cbf}_to_orig_masked_outlier_mask )
@@ -505,11 +505,11 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std \
 	#Get stats from Freesurfer segmentations
 	if ( ( $cbf == ${out}_asl_col_mc_pvc${kernel}_cbf_avg || $cbf == ${out}_asl_col_mc_cbf_avg ) \
 			&& ( ! -e ${cbf}_stats.txt || $force == 1 )) then
-		set mask = `echo ${cbf}_to_orig_masked.nii.gz | sed 's/avg/std/g'`
+		set mask = `echo ${cbf}_to_orig_masked | sed 's/avg/std/g'`
 		set cmd = ( $FREESURFER_HOME/bin/mri_segstats --i ${cbf}_to_orig_masked.nii.gz )
 		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt --sum ${cbf}_stats.txt )
 		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subject}/mri/aparc+aseg.mgz )
-		set cmd = ( $cmd --mask $mask )
+		set cmd = ( $cmd --mask ${mask}_outlier_mask.nii.gz )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	endif
