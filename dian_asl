@@ -334,7 +334,7 @@ if ( ! -e ${out}_asl_undist_mcf_cbf_avg.nii.gz || ! -e ${out}_asl_undist_mcf_cbf
 		|| ! -e ${out}_asl_undist_mcf_cbf_var.nii.gz || $force == 1 ) then	
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_undist_mcf_perf.nii.gz )
 	set cmd = ( $cmd ${out}_asl_undist_mcf_m0.nii.gz ${out}_asl_undist_mcf_m0_brain_mask.nii.gz )
-	set cmd = ( $cmd ${out}_asl_undist_mcf $out4d $unfilt -mthresh $mthresh -sthresh $sthresh )
+	set cmd = ( $cmd ${out}_asl_undist_mcf $out4d $unfilt -mthresh $mthresh -sthresh $sthresh -col )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
@@ -362,7 +362,7 @@ if ( ! -e ${out}_asl_undist_mcf_pvc${kernel}_cbf_avg.nii.gz \
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_undist_mcf_pvc${kernel}_dgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_undist_mcf_pvc${kernel}_mgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_undist_mcf_m0_brain_mask.nii.gz ${out}_asl_undist_mcf_pvc${kernel} )
-	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh )
+	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh -col )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log		
 endif
