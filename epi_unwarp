@@ -32,6 +32,7 @@ if ($#argv == 0) then
 	echo "	-nounwrap: Turn off phase unwrapping. On by default."
 	echo "	-dtimc: Due eddy correction for dti input. Will only resample once."
 	echo "	-boldmc: Apply mcflirt to bold input. Will only resample once."
+	echo "  -nomask: Do not use mask when applying bold motion correct."
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
@@ -81,8 +82,10 @@ while ($#argv > 0)
 			set unwrap = 0; breaksw;
 		case -dtimc:
 			set dtimc = 1; breaksw;
-		case -boldmc
+		case -boldmc:
 			set boldmc = 1; breaksw;
+		case -nomask:
+			set nomask = 1; breaksw
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -268,12 +271,12 @@ flirt -in ${outroot}mag_brain_mask -ref ${outroot}epi_${frame}_brain \
 #Will undistort the first frame epi and save the shift map that does this.
 fugue --loadfmap=${outroot}phase_to_${outroot}epi_${frame}_brain \
 	  --dwell=$dwell --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
-	  -i ${outroot}epi_${frame}_brain -u ${outroot}epi_${frame}_brain_undistorted --unwarpdir=$dir \
-	  --saveshift=${outroot}epi_${frame}_brain_undistorted_shift
+	  -i ${outroot}epi_${frame}_brain -u ${outroot}epi_${frame}_brain_undist --unwarpdir=$dir \
+	  --saveshift=${outroot}epi_${frame}_brain_undist_shift
 
 #Convert the shiftwarp to an absolute warp
-convertwarp -s ${outroot}epi_${frame}_brain_undistorted_shift \
-		    -o ${outroot}epi_${frame}_brain_undistorted_shift_warp -r ${outroot}epi_${frame}_brain \
+convertwarp -s ${outroot}epi_${frame}_brain_undist_shift \
+		    -o ${outroot}epi_${frame}_brain_undist_shift_warp -r ${outroot}epi_${frame}_brain \
 	        --shiftdir=$dir
 	        
 ###################
@@ -293,7 +296,8 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 			set pre = "${tmp}.mat"
 		else
 			if ( $?notfirst == 0 ) then
-				mcflirt -refvol ${outroot}epi_${frame} -mats -in ${outroot}epi
+				mcflirt -refvol ${outroot}epi_${frame} -mats -in ${outroot}epi -plots -rmsrel \
+						-rmsabs -out ${outroot}mcf
 			endif
 			set notfirst = 1
 			set tmp = `remove_ext $tmp`
@@ -301,13 +305,15 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 			set pre = "${outroot}epi_mcf.mat/MAT_${num}"
 		endif
 		
+		if ( $?nomask == 0 ) then
+			set mask = "--mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain"
+		endif
 		#Apply motion correction
-		applywarp -i $tmp -o ${tmp}_undistorted_mc -r ${outroot}epi --abs \
-				  --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
-		          -w ${outroot}epi_${frame}_brain_undistorted_shift_warp --premat=$pre
+		applywarp -i $tmp -o ${tmp}_undist_mcf -r ${outroot}epi --abs $mask
+		          -w ${outroot}epi_${frame}_brain_undist_shift_warp --premat=$pre
 	end
 	
-	fslmerge -t ${outroot}epi_undistorted_mc ${outroot}epi_tmp*_undistorted_mc.nii.gz
+	fslmerge -t ${outroot}epi_undist_mcf ${outroot}epi_tmp*_undist_mcf.nii.gz
 	rm ${outroot}epi_tmp*	
 endif
 		
