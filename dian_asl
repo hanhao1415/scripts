@@ -150,15 +150,10 @@ echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "" |& tee -a $log
 
-set cmd = ( epi_unwarp -m $mag 
-
-
-#Run motion correction and field map correction
-if ( ! -e  ${out}_asl_mcf.nii.gz || ! -e $${out}_asl_mcf.mat \
-		|| ! -e ${out}_asl_mcf.par || ! -e ${out}_asl_mcf_abs.rms \
-		|| ! -e ${out}_asl_mcf_rel.rms || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/mcflirt -in $asl -mats -plots -rmsrel -rmsabs -refvol 0 )
-	set cmd = ( $cmd -out ${out}_asl_mcf )
+#Run motion correction and field map correction in one step
+if ( ! -e ${out}_asl_undist_mcf.nii.gz || $force == 1 ) then
+	set cmd = ( epi_unwarp -m $mag -p $phase -e $asl -te 12 -dwell .49 -delta 2.46 )
+	set cmd = ( $cmd -r ${out}_asl -boldmc -nomask -o ./ )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
@@ -188,26 +183,28 @@ if ( ! -e ${out}_asl_disp.png || $force == 1 ) then
 	$cmd -t 'Estimated Displacements (mm)' |& tee -a $log
 endif
 	
-#Extract collated, motion corrected m0
-if ( ! -e ${out}_asl_mcf_m0.nii.gz || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fslroi ${out}_asl_mcf ${out}_asl_mcf_m0 0 1 )
+#Extract motion corrected m0
+if ( ! -e ${out}_asl_undist_mcf_m0.nii.gz || $force == 1 ) then
+	set cmd = ( $FSLDIR/bin/fslroi ${out}_asl_undist_mcf ${out}_asl_undist_mcf_m0 0 1 )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
 
-#Extract collated, motion tags and controls
-if ( ! -e ${out}_asl_col_mc_tc.nii.gz || $force == 1 ) then
-	set nvols = `$FSLDIR/bin/fslval ${out}_asl_col_mc dim4`
+#Extract motion corrected tags/controls
+if ( ! -e ${out}_asl_undist_mcf_tc.nii.gz || $force == 1 ) then
+	set nvols = `$FSLDIR/bin/fslval ${out}_asl_undist_mcf dim4`
 	set tcvols = `echo "$nvols - 1" | bc`
-	set cmd = ( $FSLDIR/bin/fslroi ${out}_asl_col_mc ${out}_asl_col_mc_tc 1 $tcvols )
+	set cmd = ( $FSLDIR/bin/fslroi ${out}_asl_undist_mcf ${out}_asl_undist_mcf_tc )
+	set cmd = ( $cmd 1 $tcvols )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
 
 #Get a ASL brainmask
-if ( ! -e ${out}_asl_col_mc_m0_brain_mask.nii.gz || ! -e  ${out}_asl_col_mc_m0_brain.nii.gz \
-		|| $force == 1 ) then 
-	set cmd = ( $FSLDIR/bin/bet ${out}_asl_col_mc_m0 ${out}_asl_col_mc_m0_brain -R -f 0.4 -m -n )
+if ( ! -e ${out}_asl_undist_mcf_m0_brain_mask.nii.gz \
+		|| ! -e  ${out}_asl_undist_mcf_m0_brain.nii.gz || $force == 1 ) then 
+	set cmd = ( $FSLDIR/bin/bet ${out}_asl_undist_mcf_m0 ${out}_asl_undist_mcf_m0_brain )
+	set cmd = ( $cmd -R -f 0.4 -m -n )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
@@ -234,42 +231,23 @@ if ( ! -e ${out}_orig_mask.nii.gz || $force == 1 ) then
 	$cmd |& tee -a $log
 endif
 
-#Register ASL to FreeSurfer T1
-if ( ! -e ${out}_asl_col_mc_m0_brain_to_orig_masked.nii.gz \
-		|| ! -e ${out}_asl_col_mc_m0_brain_to_orig_masked.mat || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/flirt -in ${out}_asl_col_mc_m0_brain -ref ${out}_orig_masked -dof 6 )
-	set cmd = ( $cmd -omat ${out}_asl_col_mc_m0_brain_to_orig_masked.mat )
-	set cmd = ( $cmd -out ${out}_asl_col_mc_m0_brain_to_orig_masked -cost mutualinfo )
+#Register ASL to FreeSurfer T1 using bbregister
+if ( ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat \
+		|| ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg || $force == 1 ) then
+	set cmd = ( $FREESURFER_HOME/bin/bbregister --s $subject --init-fsl --t2 --rms )
+	set cmd = ( $cmd --mov ${out}_asl_undist_mcf_m0_brain.nii.gz  )
+	set cmd = ( $cmd --reg ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg  )
+	set cmd = ( $cmd --fslmat ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat  )
+	set cmd = ( $cmd --o ${out}_asl_undist_mcf_m0_brain_to_orig_masked.nii.gz ) 
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
 
 #Invert ASL->Freesurfer to get Freesurfer->ASL
-if ( ! -e ${out}_orig_masked_to_asl_col_mc_m0_brain.mat || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/convert_xfm -omat ${out}_orig_masked_to_asl_col_mc_m0_brain.mat )
-	set cmd = ( $cmd -inverse ${out}_asl_col_mc_m0_brain_to_orig_masked.mat )
-	echo $cmd |& tee -a $log
-	$cmd |& tee -a $log
-endif
-
-#Convert ASL->Freesurfer to FreeSurfer format
-if ( ! -e ${out}_asl_col_mc_m0_brain_to_orig_masked.reg || $force == 1 ) then
-	#Convert ASL->Freesurfer
-	set cmd = ( $FREESURFER_HOME/bin/tkregister2_cmdl --mov ${out}_asl_col_mc_m0_brain.nii.gz  )
-	set cmd = ( $cmd --targ ${out}_orig_masked.nii.gz --s $subject )
-	set cmd = ( $cmd --fsl ${out}_asl_col_mc_m0_brain_to_orig_masked.mat )
-	set cmd = ( $cmd --reg ${out}_asl_col_mc_m0_brain_to_orig_masked.reg )
-	echo $cmd |& tee -a $log
-	$cmd |& tee -a $log
-endif
-
-#Convert Freesurfer->Asl to FreeSurfer Format
-if ( ! -e ${out}_orig_masked_to_asl_col_mc_m0_brain.reg || $force == 1 ) then
-	#Convert Freesurfer->ASL
-	set cmd = ( $FREESURFER_HOME/bin/tkregister2_cmdl --targ ${out}_asl_col_mc_m0_brain.nii.gz )
-	set cmd = ( $cmd --s $subject --mov ${out}_orig_masked.nii.gz )
-	set cmd = ( $cmd --fsl ${out}_orig_masked_to_asl_col_mc_m0_brain.mat )
-	set cmd = ( $cmd --reg ${out}_orig_masked_to_asl_col_mc_m0_brain.reg )
+if ( ! -e ${out}_orig_masked_to_asl_undist_mcf_m0_brain.mat || $force == 1 ) then
+	set cmd = ( $FSLDIR/bin/convert_xfm -omat ${out}_orig_masked_to_asl_undist_mcf_m0_brain.mat)
+	set cmd = ( $cmd -inverse ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
@@ -284,40 +262,43 @@ endif
 
 #Resample partial volume maps into ASL space
 foreach pve ( 0 1 2 )
-	if ( ! -e ${out}_orig_masked_pve_${pve}_to_asl_col_mc_m0_brain.nii.gz || $force == 1 ) then
+	if ( ! -e ${out}_orig_masked_pve_${pve}_to_asl_undist_mcf_m0_brain.nii.gz \
+			|| $force == 1 ) then
 		set cmd = ( $FSLDIR/bin/applywarp --in=${out}_orig_masked_pve_${pve} )
-		set cmd = ( $cmd --ref=${out}_asl_col_mc_m0_brain --super --superlevel=4 --interp=spline )
-		set cmd = ( $cmd --premat=${out}_orig_masked_to_asl_col_mc_m0_brain.mat )
-		set cmd = ( $cmd --out=${out}_orig_masked_pve_${pve}_to_asl_col_mc_m0_brain.nii.gz )
-		set cmd = ( $cmd --mask=${out}_asl_col_mc_m0_brain_mask )
+		set cmd = ( $cmd --ref=${out}_asl_undist_mcf_m0_brain --super --superlevel=4 )
+		set cmd = ( $cmd --premat=${out}_orig_masked_to_asl_undist_mcf_m0_brain.mat )
+		set cmd = ( $cmd --out=${out}_orig_masked_pve_${pve}_to_asl_undist_mcf_m0_brain )
+		set cmd = ( $cmd --mask=${out}_asl_undist_mcf_m0_brain_mask --interp=spline )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	endif
 end
 
 #Create a thresholded gray matter mask in asl space
-if ( ! -e ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain_mask.nii.gz || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain )
-	set cmd = ( $cmd -thr $gthresh -bin ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain_mask )								 
+if ( ! -e ${out}_orig_masked_pve_1_to_asl_undist_mcf_m0_brain_mask.nii.gz || $force == 1 ) then
+	set cmd = ( $FSLDIR/bin/fslmaths ${out}_orig_masked_pve_1_to_asl_undist_mcf_m0_brain -thr )
+	set cmd = ( $cmd $gthresh -bin ${out}_orig_masked_pve_1_to_asl_undist_mcf_m0_brain_mask )								 
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
 
 #Do perfusion subtraction
-if ( ! -e ${out}_asl_col_mc_perf.nii.gz || $force == 1 ) then
+if ( ! -e ${out}_asl_undist_mcf_perf.nii.gz || $force == 1 ) then
 	
 	#Split the volume
-	set cmd = ( $FSLDIR/bin/fslsplit ${out}_asl_col_mc_tc -t )
+	set cmd = ( $FSLDIR/bin/fslsplit ${out}_asl_undist_mcf_tc -t )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 		
 	#Get tags
-	set cmd = ( $FSLDIR/bin/fslmerge -t ${out}_asl_col_mc_t `$FSLDIR/bin/imglob vol*[02468].*` )
+	set cmd = ( $FSLDIR/bin/fslmerge -t ${out}_asl_undist_mcf_t )
+	set cmd = ( $cmd `$FSLDIR/bin/imglob vol*[02468].*` )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 	
 	#Get controls
-	set cmd = ( $FSLDIR/bin/fslmerge -t ${out}_asl_col_mc_c `$FSLDIR/bin/imglob vol*[13579].*` )
+	set cmd = ( $FSLDIR/bin/fslmerge -t ${out}_asl_undist_mcf_c )
+	set cmd = ( $cmd `$FSLDIR/bin/imglob vol*[13579].*` )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 	
@@ -328,20 +309,20 @@ if ( ! -e ${out}_asl_col_mc_perf.nii.gz || $force == 1 ) then
 	
 	if ( $simple == 0 ) then
 		#Do sinc subtraction by shifting the tags forward
-		set cmd = ( $FSLDIR/bin/slicetimer -i ${out}_asl_col_mc_t -o ${out}_asl_col_mc_t_sinc )
-		set cmd = ( $cmd --tglobal=1.0 )					   			   
+		set cmd = ( $FSLDIR/bin/slicetimer -i ${out}_asl_undist_mcf_t --tglobal=1.0 )
+		set cmd = ( $cmd -o ${out}_asl_undist_mcf_t_sinc )					   			   
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 		
 		#Subtract to generate perfusion image
-		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_col_mc_c -sub ${out}_asl_col_mc_t_sinc )
-		set cmd = ( $cmd ${out}_asl_col_mc_perf )
+		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_undist_mcf_c -sub ${out}_asl_undist_mcf_t_sinc )
+		set cmd = ( $cmd ${out}_asl_undist_mcf_perf )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	else
 		#Simple subtraction only
-		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_col_mc_c -sub ${out}_asl_col_mc_t )
-		set cmd = ( $cmd ${out}_asl_col_mc_perf )
+		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_undist_mcf_c -sub ${out}_asl_undist_mcf_t )
+		set cmd = ( $cmd ${out}_asl_undist_mcf_perf )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	endif
@@ -349,58 +330,58 @@ if ( ! -e ${out}_asl_col_mc_perf.nii.gz || $force == 1 ) then
 endif
 
 #Calculate uncorrected cbf	
-if ( ! -e ${out}_asl_col_mc_cbf_avg.nii.gz || ! -e ${out}_asl_col_mc_cbf_std.nii.gz \
-		|| ! -e ${out}_asl_col_mc_cbf_var.nii.gz || $force == 1 ) then	
-	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_col_mc_perf.nii.gz )
-	set cmd = ( $cmd ${out}_asl_col_mc_m0.nii.gz ${out}_asl_col_mc_m0_brain_mask.nii.gz )
-	set cmd = ( $cmd ${out}_asl_col_mc $out4d $unfilt -mthresh $mthresh -sthresh $sthresh )
+if ( ! -e ${out}_asl_undist_mcf_cbf_avg.nii.gz || ! -e ${out}_asl_undist_mcf_cbf_std.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_cbf_var.nii.gz || $force == 1 ) then	
+	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_undist_mcf_perf.nii.gz )
+	set cmd = ( $cmd ${out}_asl_undist_mcf_m0.nii.gz ${out}_asl_undist_mcf_m0_brain_mask.nii.gz )
+	set cmd = ( $cmd ${out}_asl_undist_mcf $out4d $unfilt -mthresh $mthresh -sthresh $sthresh )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
 
 #Run a regression based partial volume correction
-if ( ! -e ${out}_asl_col_mc_pvc${kernel}_dgm.nii.gz \
-		|| ! -e ${out}_asl_col_mc_pvc${kernel}_dwm.nii.gz \
-		|| ! -e ${out}_asl_col_mc_pvc${kernel}_mgm.nii.gz \
-		|| ! -e ${out}_asl_col_mc_pvc${kernel}_mwm.nii.gz \
-		|| ! -e ${out}_asl_col_mc_pvc${kernel}_mcsf.nii.gz || $force == 1 ) then
-	set cmd = ( python ~/Documents/scripts/lin_pv_pasl.py ${out}_asl_col_mc_perf.nii.gz )
-	set cmd = ( $cmd ${out}_asl_col_mc_m0.nii.gz ${out}_asl_col_mc_m0_brain_mask.nii.gz )
-	set cmd = ( $cmd ${out}_orig_masked_pve_0_to_asl_col_mc_m0_brain.nii.gz )
-	set cmd = ( $cmd ${out}_orig_masked_pve_1_to_asl_col_mc_m0_brain.nii.gz )
-	set cmd = ( $cmd ${out}_orig_masked_pve_2_to_asl_col_mc_m0_brain.nii.gz )
-	set cmd = ( $cmd ${out}_asl_col_mc_pvc${kernel} $nocsf -kernel $kernel )
+if ( ! -e ${out}_asl_undist_mcf_pvc${kernel}_dgm.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_pvc${kernel}_dwm.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_pvc${kernel}_mgm.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_pvc${kernel}_mwm.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_pvc${kernel}_mcsf.nii.gz || $force == 1 ) then
+	set cmd = ( python ~/Documents/scripts/lin_pv_pasl.py ${out}_asl_undist_mcf_perf.nii.gz )
+	set cmd = ( $cmd ${out}_asl_undist_mcf_m0.nii.gz ${out}_asl_undist_mcf_m0_brain_mask.nii.gz )
+	set cmd = ( $cmd ${out}_orig_masked_pve_0_to_asl_undist_mcf_m0_brain.nii.gz )
+	set cmd = ( $cmd ${out}_orig_masked_pve_1_to_asl_undist_mcf_m0_brain.nii.gz )
+	set cmd = ( $cmd ${out}_orig_masked_pve_2_to_asl_undist_mcf_m0_brain.nii.gz )
+	set cmd = ( $cmd ${out}_asl_undist_mcf_pvc${kernel} $nocsf -kernel $kernel )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
 
 #Calculate corrected cbf
-if ( ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_avg.nii.gz \
-		|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_std.nii.gz \
-		|| ! -e ${out}_asl_col_mc_pvc${kernel}_cbf_var.nii.gz || $force == 1 ) then	
-	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_col_mc_pvc${kernel}_dgm.nii.gz )
-	set cmd = ( $cmd ${out}_asl_col_mc_pvc${kernel}_mgm.nii.gz )
-	set cmd = ( $cmd ${out}_asl_col_mc_m0_brain_mask.nii.gz ${out}_asl_col_mc_pvc${kernel} )
+if ( ! -e ${out}_asl_undist_mcf_pvc${kernel}_cbf_avg.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_pvc${kernel}_cbf_std.nii.gz \
+		|| ! -e ${out}_asl_undist_mcf_pvc${kernel}_cbf_var.nii.gz || $force == 1 ) then	
+	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_undist_mcf_pvc${kernel}_dgm.nii.gz )
+	set cmd = ( $cmd ${out}_asl_undist_mcf_pvc${kernel}_mgm.nii.gz )
+	set cmd = ( $cmd ${out}_asl_undist_mcf_m0_brain_mask.nii.gz ${out}_asl_undist_mcf_pvc${kernel} )
 	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log		
 endif
 
-foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std \
-			  ${out}_asl_col_mc_pvc${kernel}_cbf_var ${out}_asl_col_mc_cbf_var \
-			  ${out}_asl_col_mc_pvc${kernel}_cbf_avg ${out}_asl_col_mc_cbf_avg )
+foreach cbf ( ${out}_asl_undist_mcf_pvc${kernel}_cbf_std ${out}_asl_undist_mcf_cbf_std \
+			  ${out}_asl_undist_mcf_pvc${kernel}_cbf_var ${out}_asl_undist_mcf_cbf_var \
+			  ${out}_asl_undist_mcf_pvc${kernel}_cbf_avg ${out}_asl_undist_mcf_cbf_avg )
 	
 	#Transform cbf to Freesurfer subject volume
 	if ( ! -e ${cbf}_to_orig_masked.nii.gz || $force == 1 ) then
 		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${out}_orig_masked )
-		set cmd = ( $cmd --premat=${out}_asl_col_mc_m0_brain_to_orig_masked.mat )
+		set cmd = ( $cmd --premat=${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat )
 		set cmd = ( $cmd --out=${cbf}_to_orig_masked.nii.gz --mask=${out}_orig_mask )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log		
 	endif
 	
 	#Get reasonable output mask
-	if (( $cbf == ${out}_asl_col_mc_pvc${kernel}_cbf_std || $cbf == ${out}_asl_col_mc_cbf_std ) \
+	if (( $cbf == ${out}_asl_undist_mcf_pvc${kernel}_cbf_std || $cbf == ${out}_asl_undist_mcf_cbf_std ) \
 			&& ( ! -e ${cbf}_to_orig_masked_outlier_mask.nii.gz || $force == 1)) then
 		set mean_std = `fslstats ${cbf}_to_orig_masked -k ${out}_orig_masked_seg_1.nii.gz -m`
 		set outlier_std = `echo "$mean_std * $roithresh" | bc -l`
@@ -411,7 +392,7 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std \
 	endif
 										 		
 	#Get stats from Freesurfer segmentations
-	if ( ( $cbf == ${out}_asl_col_mc_pvc${kernel}_cbf_avg || $cbf == ${out}_asl_col_mc_cbf_avg ) \
+	if ( ( $cbf == ${out}_asl_undist_mcf_pvc${kernel}_cbf_avg || $cbf == ${out}_asl_undist_mcf_cbf_avg ) \
 			&& ( ! -e ${cbf}_stats.txt || $force == 1 )) then
 		set mask = `echo ${cbf}_to_orig_masked | sed 's/avg/std/g'`
 		set cmd = ( $FREESURFER_HOME/bin/mri_segstats --i ${cbf}_to_orig_masked.nii.gz )
@@ -428,7 +409,7 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std \
 		if ( ! -e ${cbf}_to_${hemi}_fsaverage.nii.gz || $force == 1 ) then
 			set cmd = ( $FREESURFER_HOME/bin/mri_vol2surf --mov ${cbf}.nii.gz --cortex )
 			set cmd = ( $cmd --trgsubject fsaverage --hemi $hemi )
-			set cmd = ( $cmd --reg ${out}_asl_col_mc_m0_brain_to_orig_masked.reg )
+			set cmd = ( $cmd --reg ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg )
 			set cmd = ( $cmd --o ${cbf}_to_${hemi}_fsaverage.nii.gz --interp trilinear )
 			echo $cmd |& tee -a $log
 			$cmd |& tee -a $log		
@@ -438,7 +419,7 @@ foreach cbf ( ${out}_asl_col_mc_pvc${kernel}_cbf_std ${out}_asl_col_mc_cbf_std \
 		if ( ! -e ${cbf}_to_${hemi}_fsaverage_fwhm_${fwhm}.nii.gz || $force == 1 ) then
 			set cmd = ( $FREESURFER_HOME/bin/mri_vol2surf --mov ${cbf}.nii.gz --cortex )
 			set cmd = ( $cmd --trgsubject fsaverage --hemi $hemi --surf-fwhm ${fwhm} )
-			set cmd = ( $cmd --reg ${out}_asl_col_mc_m0_brain_to_orig_masked.reg )
+			set cmd = ( $cmd --reg ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg )
 			set cmd = ( $cmd --o ${cbf}_to_${hemi}_fsaverage_fwhm_${fwhm}.nii.gz --interp trilinear)
 			echo $cmd |& tee -a $log
 			$cmd |& tee -a $log														 
