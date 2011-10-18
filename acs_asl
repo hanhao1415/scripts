@@ -427,13 +427,13 @@ if ( ! -e ${out}_asl_col_mc_perf.nii.gz || $force == 1 ) then
 		
 		#Subtract to generate perfusion image
 		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_col_mc_c -sub ${out}_asl_col_mc_t_sinc )
-		set cmd = ( $cmd ${out}_asl_col_mc_perf )
+		set cmd = ( $cmd ${out}_asl_col_mc_perf -odt float )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	else
 		#Simple subtraction only
 		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_col_mc_c -sub ${out}_asl_col_mc_t )
-		set cmd = ( $cmd ${out}_asl_col_mc_perf )
+		set cmd = ( $cmd ${out}_asl_col_mc_perf -odt float )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	endif

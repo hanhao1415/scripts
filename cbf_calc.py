@@ -117,9 +117,9 @@ m0_masked_data = np.ma.array(m0_data,mask=mask_array_3d)
 
 #Get number of unique slice times
 if args.col == 1:
-	set uniq_st = m0_masked_data.shape[2] / 2
+	uniq_st = m0_masked_data.shape[2] / 2
 else:
-	set uniq_st = m0_masked_data.shape[2]
+	uniq_st = m0_masked_data.shape[2]
 
 #Create a 3D matrix with a different scale value for each slice
 sliceTime = (args.minTR[0] - args.TI2[0]) / ( uniq_st )

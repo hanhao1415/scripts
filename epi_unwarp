@@ -32,7 +32,8 @@ if ($#argv == 0) then
 	echo "	-nounwrap: Turn off phase unwrapping. On by default."
 	echo "	-dtimc: Due eddy correction for dti input. Will only resample once."
 	echo "	-boldmc: Apply mcflirt to bold input. Will only resample once."
-	echo "  -nomask: Do not use mask when applying bold motion correct."
+	echo " 	-nomask: Do not use mask when applying motion correction."
+	echo "	-epibet: BET fractional intensity threshold for EPI. Default is .2"
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
@@ -85,7 +86,9 @@ while ($#argv > 0)
 		case -boldmc:
 			set boldmc = 1; breaksw;
 		case -nomask:
-			set nomask = 1; breaksw
+			set mask = ""; breaksw
+		case -epibet:
+			set epibet = $argv[1]; shift; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -113,6 +116,8 @@ if ($reg == "despike" && $?dthresh == 0) set dthresh = 2.1
 if ($reg == "smooth" && $?mm3 == 0) set mm3 = 5
 if ($?dir == 0) set dir = "y-"
 if ($?unwrap == 0) set unwrap = 1
+if ($?mask == 0 ) set mask = "--mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain"
+if ($?epibet == 0 ) set epibet = .2
 
 #Check to make sure -reg is set correctly
 set reg_options = ( "smooth" "median" "none" "despike"); echo $reg_options | grep -qw $reg;
@@ -165,7 +170,7 @@ fslmaths ${outroot}phase -div $delta ${outroot}phase
 
 #Extract epi frame, then brain extract
 fslroi ${outroot}epi ${outroot}epi_${frame} $frame 1
-bet ${outroot}epi_${frame} ${outroot}epi_${frame}_brain -m -f .2 -R
+bet ${outroot}epi_${frame} ${outroot}epi_${frame}_brain -m -f $epibet -R
 
 #Create inverted field map brain mask
 fslmaths ${outroot}phase -abs -bin -mas ${outroot}mag_brain_mask -mul -1 -add 1 -bin \
@@ -296,24 +301,21 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 			set pre = "${tmp}.mat"
 		else
 			if ( $?notfirst == 0 ) then
-				mcflirt -refvol ${outroot}epi_${frame} -mats -in ${outroot}epi -plots -rmsrel \
+				mcflirt -refvol ${frame} -mats -in ${outroot}epi -plots -rmsrel \
 						-rmsabs -out ${outroot}mcf
 			endif
 			set notfirst = 1
 			set tmp = `remove_ext $tmp`
 			set num = `echo $tmp | grep -o "tmp.*[0-9]" | sed 's/tmp//g'`
-			set pre = "${outroot}epi_mcf.mat/MAT_${num}"
+			set pre = "${outroot}mcf.mat/MAT_${num}"
 		endif
-		
-		if ( $?nomask == 0 ) then
-			set mask = "--mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain"
-		endif
+
 		#Apply motion correction
-		applywarp -i $tmp -o ${tmp}_undist_mcf -r ${outroot}epi --abs $mask
+		applywarp -i $tmp -o ${tmp}_undist_mcf -r ${outroot}epi --abs $mask \
 		          -w ${outroot}epi_${frame}_brain_undist_shift_warp --premat=$pre
 	end
 	
-	fslmerge -t ${outroot}epi_undist_mcf ${outroot}epi_tmp*_undist_mcf.nii.gz
+	fslmerge -t ${outroot}undist_mcf ${outroot}epi_tmp*_undist_mcf.nii.gz
 	rm ${outroot}epi_tmp*	
 endif
 		

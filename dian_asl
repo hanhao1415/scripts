@@ -21,7 +21,7 @@ if ( $#argv == 0 ) then
 	echo ""
 	echo "Required Arguments:"
 	echo "	-asl: First Asl run."
-	echo "  -mag: Field map magnitude image."
+	echo "	-mag: Field map magnitude image."
 	echo "	-phase: Field map phase image."
 	echo " 	-subj: Freesurfer subject ID."
 	echo "	-out: Root for outputed files."
@@ -31,7 +31,7 @@ if ( $#argv == 0 ) then
 	echo "	-simple: Do simple subtraction. Default is sinc."
 	echo "	-unfilt: Output CBF data with and without outlier removal."
 	echo "	-mthresh: Threshold for mean perfusion outliers. Default is 2.5."
-	echo "  -sthresh: Threshold for standard deviation perfusion outliers. Default is 1.5"
+	echo "	-sthresh: Threshold for standard deviation perfusion outliers. Default is 1.5"
 	echo "	-kernel: Size of regression kernel for partial volume correction. Default is 5.0."
 	echo "	-nocsf: Assume that there is no perfusion in CSF for partial volume correction."
 	echo "	-out4d:	Output a 4d cbf image."
@@ -153,7 +153,7 @@ echo "" |& tee -a $log
 #Run motion correction and field map correction in one step
 if ( ! -e ${out}_asl_undist_mcf.nii.gz || $force == 1 ) then
 	set cmd = ( epi_unwarp -m $mag -p $phase -e $asl -te 12 -dwell .49 -delta 2.46 )
-	set cmd = ( $cmd -r ${out}_asl -boldmc -nomask -o ./ )
+	set cmd = ( $cmd -r ${out}_asl -boldmc -nomask -o ./ -dir x )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
@@ -161,7 +161,7 @@ endif
 #Create Rotation plot
 if ( ! -e  ${out}_asl_rot.png || $force == 1 ) then	
 	set cmd = ( $FSLDIR/bin/fsl_tsplot -i ${out}_asl_mcf.par -w 640 -h 144 ) 
-	set cmd = ( $cmd -a x,y,z -u 1 --start=1 --finish=3 -o ${out}_asl_mcf.png )
+	set cmd = ( $cmd -a x,y,z -u 1 --start=1 --finish=3 -o ${out}_asl_rot.png )
 	echo $cmd -t 'Estimated Rotations (radians)' |& tee -a $log
 	$cmd -t 'Estimated Rotations (radians)' |& tee -a $log
 endif
@@ -204,11 +204,10 @@ endif
 if ( ! -e ${out}_asl_undist_mcf_m0_brain_mask.nii.gz \
 		|| ! -e  ${out}_asl_undist_mcf_m0_brain.nii.gz || $force == 1 ) then 
 	set cmd = ( $FSLDIR/bin/bet ${out}_asl_undist_mcf_m0 ${out}_asl_undist_mcf_m0_brain )
-	set cmd = ( $cmd -R -f 0.4 -m -n )
+	set cmd = ( $cmd -R -f 0.5 -m -n )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
-
 
 if ( ! -e ${out}_orig_masked.nii.gz || $force == 1 ) then
 	#Get a brain masked orig image
@@ -231,23 +230,42 @@ if ( ! -e ${out}_orig_mask.nii.gz || $force == 1 ) then
 	$cmd |& tee -a $log
 endif
 
-#Register ASL to FreeSurfer T1 using bbregister
+#Register ASL to FreeSurfer T1
 if ( ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.nii.gz \
-		|| ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat \
-		|| ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg || $force == 1 ) then
-	set cmd = ( $FREESURFER_HOME/bin/bbregister --s $subject --init-fsl --t2 --rms )
-	set cmd = ( $cmd --mov ${out}_asl_undist_mcf_m0_brain.nii.gz  )
-	set cmd = ( $cmd --reg ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg  )
-	set cmd = ( $cmd --fslmat ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat  )
-	set cmd = ( $cmd --o ${out}_asl_undist_mcf_m0_brain_to_orig_masked.nii.gz ) 
+		|| ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat || $force == 1 ) then
+	set cmd = ( $FSLDIR/bin/flirt -in ${out}_asl_undist_mcf_m0_brain -ref ${out}_orig_masked -dof 6 )
+	set cmd = ( $cmd -omat ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat )
+	set cmd = ( $cmd -out ${out}_asl_undist_mcf_m0_brain_to_orig_masked -cost mutualinfo )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
 
 #Invert ASL->Freesurfer to get Freesurfer->ASL
 if ( ! -e ${out}_orig_masked_to_asl_undist_mcf_m0_brain.mat || $force == 1 ) then
-	set cmd = ( $FSLDIR/bin/convert_xfm -omat ${out}_orig_masked_to_asl_undist_mcf_m0_brain.mat)
+	set cmd = ( $FSLDIR/bin/convert_xfm -omat ${out}_orig_masked_to_asl_undist_mcf_m0_brain.mat )
 	set cmd = ( $cmd -inverse ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat )
+	echo $cmd |& tee -a $log
+	$cmd |& tee -a $log
+endif
+
+#Convert ASL->Freesurfer to FreeSurfer format
+if ( ! -e ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg || $force == 1 ) then
+	#Convert ASL->Freesurfer
+	set cmd = ( $FREESURFER_HOME/bin/tkregister2_cmdl --mov ${out}_asl_undist_mcf_m0_brain.nii.gz  )
+	set cmd = ( $cmd --targ ${out}_orig_masked.nii.gz --s $subject )
+	set cmd = ( $cmd --fsl ${out}_asl_undist_mcf_m0_brain_to_orig_masked.mat )
+	set cmd = ( $cmd --reg ${out}_asl_undist_mcf_m0_brain_to_orig_masked.reg )
+	echo $cmd |& tee -a $log
+	$cmd |& tee -a $log
+endif
+
+#Convert Freesurfer->Asl to FreeSurfer Format
+if ( ! -e ${out}_orig_masked_to_asl_undist_mcf_m0_brain.reg || $force == 1 ) then
+	#Convert Freesurfer->ASL
+	set cmd = ( $FREESURFER_HOME/bin/tkregister2_cmdl --targ ${out}_asl_undist_mcf_m0_brain.nii.gz )
+	set cmd = ( $cmd --s $subject --mov ${out}_orig_masked.nii.gz )
+	set cmd = ( $cmd --fsl ${out}_orig_masked_to_asl_undist_mcf_m0_brain.mat )
+	set cmd = ( $cmd --reg ${out}_orig_masked_to_asl_undist_mcf_m0_brain.reg )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log
 endif
@@ -316,13 +334,13 @@ if ( ! -e ${out}_asl_undist_mcf_perf.nii.gz || $force == 1 ) then
 		
 		#Subtract to generate perfusion image
 		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_undist_mcf_c -sub ${out}_asl_undist_mcf_t_sinc )
-		set cmd = ( $cmd ${out}_asl_undist_mcf_perf )
+		set cmd = ( $cmd ${out}_asl_undist_mcf_perf -odt float )
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	else
 		#Simple subtraction only
 		set cmd = ( $FSLDIR/bin/fslmaths ${out}_asl_undist_mcf_c -sub ${out}_asl_undist_mcf_t )
-		set cmd = ( $cmd ${out}_asl_undist_mcf_perf )
+		set cmd = ( $cmd ${out}_asl_undist_mcf_perf -odt float)
 		echo $cmd |& tee -a $log
 		$cmd |& tee -a $log	
 	endif
@@ -334,7 +352,7 @@ if ( ! -e ${out}_asl_undist_mcf_cbf_avg.nii.gz || ! -e ${out}_asl_undist_mcf_cbf
 		|| ! -e ${out}_asl_undist_mcf_cbf_var.nii.gz || $force == 1 ) then	
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_undist_mcf_perf.nii.gz )
 	set cmd = ( $cmd ${out}_asl_undist_mcf_m0.nii.gz ${out}_asl_undist_mcf_m0_brain_mask.nii.gz )
-	set cmd = ( $cmd ${out}_asl_undist_mcf $out4d $unfilt -mthresh $mthresh -sthresh $sthresh -col )
+	set cmd = ( $cmd ${out}_asl_undist_mcf $out4d $unfilt -mthresh $mthresh -sthresh $sthresh )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log	
 endif
@@ -362,7 +380,7 @@ if ( ! -e ${out}_asl_undist_mcf_pvc${kernel}_cbf_avg.nii.gz \
 	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${out}_asl_undist_mcf_pvc${kernel}_dgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_undist_mcf_pvc${kernel}_mgm.nii.gz )
 	set cmd = ( $cmd ${out}_asl_undist_mcf_m0_brain_mask.nii.gz ${out}_asl_undist_mcf_pvc${kernel} )
-	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh -col )
+	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh )
 	echo $cmd |& tee -a $log
 	$cmd |& tee -a $log		
 endif
