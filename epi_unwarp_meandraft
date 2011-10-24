@@ -33,6 +33,7 @@ if ($#argv == 0) then
 	echo "	-boldmc: Apply mcflirt to bold input. Will only resample once."
 	echo " 	-nomask: Do not use mask when applying motion correction."
 	echo "	-epibet: BET fractional intensity threshold for EPI. Default is .2"
+	echo "  -magmask: Mask for field map magnitude image. By default, it is estimated with BET."
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
@@ -86,6 +87,8 @@ while ($#argv > 0)
 			set mask = ""; breaksw
 		case -epibet:
 			set epibet = $argv[1]; shift; breaksw;
+		case -magmask:
+			set magmask = $argv[1]; shift; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -140,7 +143,12 @@ imcp $phase ${outpath}/${outroot}phase;
 cd $outpath
 
 #Create brain mask for magnitude
-bet ${outroot}mag ${outroot}mag_brain -m -R
+if ( $?magmask == 0 ) then
+	bet ${outroot}mag ${outroot}mag_brain -m -R
+else
+	imcp $magmask ${outroot}mag_mask
+	fslmaths ${outroot}mag -mas {outroot}mag_mask  ${outroot}mag_brain
+endif
 
 #Convert to radians/second
 fslmaths ${outroot}phase -div $delta ${outroot}phase
