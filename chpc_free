@@ -78,7 +78,7 @@ while ( $#argv > 0 )
 		case -sm
 			echo $argv[2] | grep -qw "[0-9]\|[0-9]\{2\}\|[0-9]\{3\}"
 			if ( $? != 0 ) then
-				echo "Error: Run $argv[2] does not appear a 1,2, or 3 digit run number. Exiting..."
+				echo "Error: Run $argv[2] does not appear a 1,2,or 3 digit run number. Exiting..."
 				exit 1
 			endif
 			set mprages =  ( ); set specific = 1;
@@ -318,7 +318,7 @@ foreach session ( $sessions )
 			endif
 		else
 			#convert raw files to nifti. Do not crop/reorient or gzip. 
-			dcm2nii -r n -g n * 
+			dcm2nii -d N -p N -i N -f N -r n -g n * 
 		endif
 	endif
 	
@@ -386,8 +386,7 @@ foreach session ( $sessions )
 	endif
 	
 	#copy batch and params to freesurfer session_folder
-	echo "cp $session_data_path/${session}.batch $session_data_path/${session}.params"
-	     "$session_free_path/" >> ${session}.batch
+	echo "cp $session_data_path/${session}.batch $session_data_path/${session}.params $session_free_path/" >> ${session}.batch
 	
 	#unless user overrides, submit in a group
 	if ( $?sub == 0 ) then

@@ -1,0 +1,22 @@
+#!/bin/tcsh -f
+
+foreach session ( $1/* )
+	pushd $session
+	
+	#Create batch file
+	echo "#PBS -N $session:t -l nodes=1:ppn=1:idataplex,walltime=48:00:00,vmem=4gb -q dque" > ${session:t}_reproc.batch
+	echo "export SUBJECTS_DIR=$1" >> ${session:t}_reproc.batch
+	echo 'export FREESURFER_HOME=/export/freesufer-5.1' >> ${session:t}_reproc.batch
+	echo 'export PATH=${FREESURFER_HOME}/bin:${PATH}' >> ${session:t}_reproc.batch
+	echo 'export PATH=${FREESURFER_HOME}/mni/bin:${PATH}' >> ${session:t}_reproc.batch
+	echo 'export PERL5LIB=${FREESURFER_HOME}/mni/lib/perl5/5.8.5/' >> ${session:t}_reproc.batch
+	echo "recon-all -s $session:t -make all" >> ${session:t}_reproc.batch
+	
+	#Submit the session
+	qsub ${session:t}_reproc.batch
+
+	sleep 2
+	
+	popd
+end
+	
