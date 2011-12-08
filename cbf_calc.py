@@ -74,6 +74,8 @@ arg_parse.add_argument('-sthresh',help='Standard deviation threshold for standar
 arg_parse.add_argument('-unfilt',action='store_const',const=1,help='Output unfiltered CBF data.')
 arg_parse.add_argument('-out4d',action='store_const',const=1,
 					  help='Output a 4d cbf image for each output.')
+arg_parse.add_argument('-col',action='store_const',const=1,help='Account for collated data with \
+					   when accounting for slice timing.')
 args = arg_parse.parse_args()
 
 #Load images
@@ -113,16 +115,24 @@ perf_masked_data = np.ma.array(perf_data,mask=mask_array_4d)
 m0_masked_data = np.ma.array(m0_data,mask=mask_array_3d)
 
 
+#Get number of unique slice times
+if args.col == 1:
+	uniq_st = m0_masked_data.shape[2] / 2
+else:
+	uniq_st = m0_masked_data.shape[2]
+
 #Create a 3D matrix with a different scale value for each slice
-#Note, that we will assume that there are ten slices for calculation due to interleaved runs
-sliceTime = (args.minTR[0] - args.TI2[0]) / ( m0_masked_data.shape[2] / 2 )
+sliceTime = (args.minTR[0] - args.TI2[0]) / ( uniq_st )
 scale_array = np.ma.empty_like(m0_masked_data)
-for slice in range(m0_masked_data.shape[2]/2):
+for slice in range(uniq_st):
 	acqTime = args.TI2[0] + (slice * sliceTime)
 	scale = (6000.0 * 1000.0 * args.lmbda[0]) / ( 2.0 * np.exp( (-1 * acqTime) / args.T1a[0]) \
-			 * args.TI1[0] * args.alp[0] * args.qTI[0])
-	scale_array[:,:,slice*2] = scale
-	scale_array[:,:,slice*2+1] = scale
+			 * args.TI1[0] * args.alp[0] * args.qTI[0])	
+	if args.col ==1:
+		scale_array[:,:,slice*2] = scale
+		scale_array[:,:,slice*2+1] = scale
+	else:
+		scale_array[:,:,slice] = scale
 
 #If user wants, output unfiltered cbf images
 if args.unfilt == 1:

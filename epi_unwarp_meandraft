@@ -29,11 +29,11 @@ if ($#argv == 0) then
 	echo "	-dthresh: Despike threshhold. For use with -reg despike. Default is 2.1"
 	echo " 	-mm3: Size of kernel to use with -reg smooth. Default is 5"
 	echo " 	-dir: Direction of epi unwarp. Default is y-. Takes x,x-,y,y-,z,z-"
-	echo "	-nounwrap: Turn off phase unwrapping. On by default."
 	echo "	-dtimc: Due eddy correction for dti input. Will only resample once."
 	echo "	-boldmc: Apply mcflirt to bold input. Will only resample once."
 	echo " 	-nomask: Do not use mask when applying motion correction."
 	echo "	-epibet: BET fractional intensity threshold for EPI. Default is .2"
+	echo "  -magmask: Mask for field map magnitude image. By default, it is estimated with BET."
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
@@ -79,8 +79,6 @@ while ($#argv > 0)
 			set mm3 = $argv[1]; shift; breaksw;
 		case -dir:
 			set dir = $argv[1]; shift; breaksw;
-		case -nounwrap:
-			set unwrap = 0; breaksw;
 		case -dtimc:
 			set dtimc = 1; breaksw;
 		case -boldmc:
@@ -89,6 +87,8 @@ while ($#argv > 0)
 			set mask = ""; breaksw
 		case -epibet:
 			set epibet = $argv[1]; shift; breaksw;
+		case -magmask:
+			set magmask = $argv[1]; shift; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -115,7 +115,6 @@ if ($?reg == 0) set reg = "despike"
 if ($reg == "despike" && $?dthresh == 0) set dthresh = 2.1
 if ($reg == "smooth" && $?mm3 == 0) set mm3 = 5
 if ($?dir == 0) set dir = "y-"
-if ($?unwrap == 0) set unwrap = 1
 if ($?mask == 0 ) set mask = "--mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain"
 if ($?epibet == 0 ) set epibet = .2
 
@@ -143,22 +142,12 @@ imcp $mag ${outpath}/${outroot}mag; imcp $epi ${outpath}/${outroot}epi
 imcp $phase ${outpath}/${outroot}phase; 
 cd $outpath
 
-#Check to see if the phase map range is as expected
-set range = `fslstats ${outroot}phase -R`.
-if ( $range[1] != -4096.000000 || $range[2] != 4092.000000 ) then
-	echo "Range of phase map is not -4096.000000 to 4092.000000. Exiting..."
-	exit 1
-endif
-
-#Convert field map to radians
-fslmaths ${outroot}phase -div 4096 -mul 3.14159265 ${outroot}phase
-
 #Create brain mask for magnitude
-bet ${outroot}mag ${outroot}mag_brain -m -R
-
-#If user wants, unwrap phase with prelude.
-if ($unwrap == 1) then
-	prelude -p ${outroot}phase -a ${outroot}mag -o ${outroot}phase -m ${outroot}mag_brain_mask
+if ( $?magmask == 0 ) then
+	bet ${outroot}mag ${outroot}mag_brain -m -R
+else
+	imcp $magmask ${outroot}mag_mask
+	fslmaths ${outroot}mag -mas {outroot}mag_mask  ${outroot}mag_brain
 endif
 
 #Convert to radians/second
