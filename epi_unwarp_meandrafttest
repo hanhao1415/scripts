@@ -267,6 +267,10 @@ fugue --loadfmap=${outroot}phase_to_${outroot}epi_${frame}_brain \
 	  --dwell=$dwell --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
 	  -i ${outroot}epi_${frame}_brain -u ${outroot}epi_${frame}_brain_undist --unwarpdir=$dir \
 	  --saveshift=${outroot}epi_${frame}_brain_undist_shift
+fugue --loadfmap=${outroot}phase_to_${outroot}epi_${frame}_brain \
+	  --dwell=$dwell --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
+	  -i ${outroot}epi_${frame}_brain_mask -u ${outroot}epi_${frame}_brain_undist_mask --unwarpdir=$dir \
+	  --saveshift=${outroot}epi_${frame}_brain_undist_shift
 
 #Convert the shiftwarp to an absolute warp
 convertwarp -s ${outroot}epi_${frame}_brain_undist_shift \
