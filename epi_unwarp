@@ -34,6 +34,7 @@ if ($#argv == 0) then
 	echo "	-boldmc: Apply mcflirt to bold input. Will only resample once."
 	echo " 	-nomask: Do not use mask when applying motion correction."
 	echo "	-epibet: BET fractional intensity threshold for EPI. Default is .2"
+	echo "	-debug: Turn on set echo."
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
@@ -43,7 +44,6 @@ if ($#argv == 0) then
 	exit
 endif
 
-
 #################
 #Parse Arguments#
 #################
@@ -52,22 +52,10 @@ while ($#argv > 0)
 	set flag = $argv[1]; shift;
 	switch ($flag)
 		case -m:
-			if ( ! -e $argv[1] ) then
-				echo "Cannot find image at: $argv[1]"
-				exit 1
-			endif
 			set mag = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -e:
-			if ( ! -e $argv[1] ) then
-				echo "Cannot find image at: $argv[1]"
-				exit 1
-			endif
 			set epi = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -p:
-			if ( ! -e $argv[1] ) then
-				echo "Cannot find image at: $argv[1]"
-				exit 1
-			endif
 			set phase = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -o:
 			set outpath = $argv[1]; shift; breaksw;
@@ -101,6 +89,8 @@ while ($#argv > 0)
 			set mask = ""; breaksw
 		case -epibet:
 			set epibet = $argv[1]; shift; breaksw;
+		case -debug:
+			set echo; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -128,7 +118,6 @@ if ($reg == "despike" && $?dthresh == 0) set dthresh = 2.1
 if ($reg == "smooth" && $?mm3 == 0) set mm3 = 5
 if ($?dir == 0) set dir = "y-"
 if ($?unwrap == 0) set unwrap = 1
-if ($?mask == 0 ) set mask = "--mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain"
 if ($?epibet == 0 ) set epibet = .2
 set FSL = $FSLDIR/bin
 
@@ -150,7 +139,6 @@ endif
 #Preproc, Unit Conversion, Unwraping#
 #####################################
 
-set echo
 #Copy images over
 $FSL/imcp $mag ${outpath}/${outroot}mag; $FSL/imcp $epi ${outpath}/${outroot}epi
 $FSL/imcp $phase ${outpath}/${outroot}phase
@@ -167,10 +155,8 @@ else
 	exit 1
 endif
 
-
-
 #Create brain mask for magnitude
-$FSL/bet ${outroot}mag ${outroot}mag_brain -f 0.4 -m -R
+$FSL/bet ${outroot}mag ${outroot}mag_brain -f 0.3 -m -R
 
 #If user wants, unwrap phase with prelude.
 if ($unwrap == 1) then
@@ -293,14 +279,16 @@ $FSL/flirt -in ${outroot}phase_rad_unwrap_secs -ref ${outroot}epi_${frame}_brain
 	  -applyxfm -out ${outroot}phase_rad_unwrap_secs_to_${outroot}epi_${frame}_brain
 $FSL/flirt -in ${outroot}mag_brain_mask -ref ${outroot}epi_${frame}_brain \
 	  -init ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
-	  -applyxfm -out ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
-	  -interp nearestneighbour
+	  -applyxfm -out ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain 
+#Rebinarize mask. Using 0.4 to avoid brain erosion.
+$FSL/fslmaths ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain -thr 0.4 -bin \
+			  ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain
 
 #Run fugue using the registerted field map on the distorted epi. 
 #Will undistort the first frame epi and save the shift map that does this.
 $FSL/fugue --loadfmap=${outroot}phase_rad_unwrap_secs_to_${outroot}epi_${frame}_brain \
 	  --dwell=$dwell --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
-	  -i ${outroot}epi_${frame}_brain -u ${outroot}epi_${frame}_brain_undist --unwarpdir=$dir \
+	  -i ${outroot}epi_${frame} -u ${outroot}epi_${frame}_undist --unwarpdir=$dir \
 	  --saveshift=${outroot}epi_${frame}_brain_undist_shift
 
 #Convert the shiftwarp to an absolute warp
@@ -313,20 +301,24 @@ $FSL/convertwarp -s ${outroot}epi_${frame}_brain_undist_shift \
 ###################
 
 if ( $?dtimc == 1  || $?boldmc == 1 ) then
+	
+	#Setup mask if not already done
+	if ( $?mask == 0 ) set mask = "-m ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain"
+	
 	$FSL/fslsplit ${outroot}epi ${outroot}epi_tmp
 	foreach tmp ( ${outroot}epi_tmp* )
 		
 		#Create correct pre matrices
 		if ( $?dtimc == 1 ) then
 			set tmp = `$FSL/remove_ext $tmp`
-			echo "processing $tmp" >> eddycorrect.log
-			echo "" >> eddycorrect.log
+			echo "processing $tmp" >> ${outroot}eddycorrect.log
+			echo "" >> ${outroot}eddycorrect.log
 			$FSL/flirt -in $tmp -ref ${outroot}epi_${frame} -nosearch -omat ${tmp}.mat \
 						-paddingsize 1
 			set pre = "${tmp}.mat"
-			echo "Final Result:" >> eddycorrect.log
-			cat $pre >> eddycorrect.log
-			echo "" >> eddycorrect.log
+			echo "Final Result:" >> ${outroot}eddycorrect.log
+			cat $pre >> ${outroot}eddycorrect.log
+			echo "" >> ${outroot}eddycorrect.log
 		else
 			if ( $?notfirst == 0 ) then
 				$FSL/mcflirt -refvol ${frame} -mats -in ${outroot}epi -plots -rmsrel \
@@ -343,7 +335,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 		          	   -w ${outroot}epi_${frame}_brain_undist_shift_warp --premat=$pre
 	end
 	
-	$FSL/fslmerge -t ${outroot}undist_mcf ${outroot}epi_tmp*_undist_mcf.nii.gz
+	$FSL/fslmerge -t ${outroot}epi_undist_mcf ${outroot}epi_tmp*_undist_mcf.nii.gz
 	rm ${outroot}epi_tmp*	
 endif
 		
