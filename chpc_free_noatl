@@ -1,0 +1,405 @@
+#!/bin/tcsh -f
+#By Tyler Blazey - Spring 2011
+
+#Updated May 25, 2011 
+#Several changes made:
+#	Support for FreeSurfer 5.1
+#	Changed directory structure to accomdate 5.1 removal of -force flag (subject directory can 
+#	no longer exist before invocation of recon-all with an -i flag
+#	Added support for CAP Vision sessions with IMA data
+# 	Added support for CAP Sonata sessions
+
+# Don't match wildcards in variables...
+set nonomatch
+
+#usage
+set program = $0:t
+if ( $#argv == 0 ) then
+	echo ""
+	echo "${program}: A basic wrapper to process ADRC FreeSurfer sessions on the CHPC Supercomputer"
+	echo ""
+	echo "Usage:"
+	echo ""
+	echo "Required Arguments:"
+	echo "	-u: CNDA username"
+	echo "	-p: CNDA password"
+	echo "	-s: CNDA Session OR -f: Text file with CNDA sessions OR -sm Session and specific MPRAGE"
+	echo "	    run number OR -fm: Comma seperated text file with CNDA sessions and a specific"
+	echo "	    MPRAGE run number"
+	echo "	-o: Output Directory"
+	echo ""
+	echo "Optional Arguments:"
+	echo "	-quest: Allow questionable scans."
+	echo "	-email: User email address for batch reporting"
+	echo "	-max: Set the maximum number of MPRAGE's to use. Default is 2."
+	echo " 	-v: Specify FreeSurfer version. Takes 4.5.0, 5.0, or 5.1. Default is 5.1."
+	echo " 	-vmem: Specify the amount of virtual memory per job in gb. Default is 4." 
+	echo " 	-wtime: Specify job wall time in hours. Default is 48."
+	echo "	-sub: Submit jobs automatically. Default is for user to sumbit as a group."
+	echo "	-nohippo: Turn off 5.1 hippocampus subfield segmentation. On by default."
+	echo ""
+	echo "Dependencies:"
+	echo " 	1. Freesurfer (mri_convert, mri_probedicom, and mri_probe_ima) in path"
+	echo " 	2. xnat_tools (ArcRead and ArcGet) in path"
+	echo " 	3. dcm2nii in path"
+	echo ""
+	exit 0
+endif
+
+#first dependency check
+set first_check = ()
+foreach first_bin ( mri_convert mri_probedicom mri_probe_ima dcm2nii ArcRead ArcGet )
+	set check = `where $first_bin`
+	if ( $#check == 0 ) set first_check = ( $first_check $first_bin );
+end
+
+if ( $#first_check != 0 ) then
+	echo "The following programs were not found in your path: $first_check"
+	echo "This script will not run until this has been corrected. See usage for more info"
+	exit 1
+endif
+
+#set globals
+set sessions = (); set qsubarray = (); set my_status = 0; set proc_count = 0;
+
+#parse arguments
+while ( $#argv > 0 ) 
+	set flag = $argv[1]; shift;
+	switch ( $flag )
+		case -u:
+			set username = $argv[1]; shift; breaksw;
+		case -p:
+			set pass = $argv[1]; shift; breaksw;
+		case -s:
+			set sessions = ( $sessions $argv[1] ); shift; breaksw;
+		case -sm
+			echo $argv[2] | grep -qw "[0-9]\|[0-9]\{2\}\|[0-9]\{3\}"
+			if ( $? != 0 ) then
+				echo "Error: Run $argv[2] does not appear a 1,2, or 3 digit run number. Exiting..."
+				exit 1
+			endif
+			set mprages =  ( ); set specific = 1;
+			set sessions = ( $sessions $argv[1] ); set mprages = ( $mprages $argv[2] );
+			shift; shift; breaksw;
+			
+		case -f:
+			#check if fill exists. If it does not, exit.
+			if ( ! -e $argv[1] ) then
+				"Error: Could not find $argv[1]"
+				exit 1
+			endif
+			set sessions = ( $sessions `cat $argv[1]` ); shift; breaksw;
+		case -fm:
+			#check if file exists. If it does not, exit.
+			if ( ! -e $argv[1] ) then
+				"Error: Could not find $argv[1]"
+				exit 1
+			endif
+			set mprages =  ( ); set specific = 1;
+			foreach line ( `cat $argv[1]` )
+				set session = `echo $line | cut -d, -f1`; set mprage = `echo $line | cut -d, -f2`;
+				set sessions = ( $sessions $session ); set mprages = ( $mprages $mprage );
+			end
+			shift; breaksw;
+		case -o:
+			set output_path = $argv[1]
+			#If user does not give a path, assume current working directory.
+			#Thanks to dcm_sort for this...
+			if (`echo $output_path | awk '{if(substr($0,1,1)!="/"&&substr($0,1,1)!="."\
+			&&substr($0,1,1) !="~")print "1"}'` == 1) then
+				set output_path = ${cwd}/${output_path}
+			endif
+			shift; breaksw;
+		case -quest:
+			set quality = 2; breaksw;
+		case -email:
+			set email = "-M $argv[1]"; shift; breaksw;
+		case -max:
+			set max = $argv[1]; shift; breaksw;
+		case -v:
+			if ( $argv[1] != "4.5.0" && $argv[1] != "5.0" && $argv[1] != "5.1" ) then
+				echo "Unknown FreeSurfer Version $argv[1]. Exiting..."
+				exit 1
+			endif
+			set free_ver = $argv[1]; shift; breaksw;
+		case -vmem:
+			set vmem = $argv[1]; shift; breaksw;
+		case -wtime:
+			set wtime = $argv[1]":00:00"; shift; breaksw;
+		case -sub:
+			set sub = 1; breaksw;
+		case -nohippo:
+			set nohippo = 1; breaksw;
+		default:
+			echo "Option $flag not recognized. See usage."
+			exit 1
+	endsw
+end
+
+#check to make sure all required options have been set
+if ( $?username == 0 || $?pass == 0 || $#sessions == 0  || $?output_path == 0 ) then
+	echo "Missing required arguments. See usage"
+	exit 1
+endif
+
+#set defaults
+if ( $?quality == 0 ) set quality = 1
+if ( $?email == 0 ) set email = ""
+if ( $?max == 0 ) set max = 2
+if ( $?free_ver == 0 ) set free_ver = "5.1"
+if ( $?vmem == 0 ) set vmem = 4
+if ( $?wtime == 0 ) set wtime = "48:00:00"
+
+#make output_path directory if it does not exist
+if ( ! -d $output_path ) mkdir $output_path $output_path/sessions $output_path/raw_data
+
+@ session_count = 1;
+#setup each each sessions
+foreach session ( $sessions )
+	
+	#make directories and such
+	set session_free_path = "$output_path/sessions/$session"
+	set session_data_path = "$output_path/raw_data/$session"
+	
+	#check to see if subject already exists. If it does, skip it
+	if ( -e $session_data_path ) then
+		echo "$session has already been processed by ${program}. Skipping duplicate..."
+		echo "$session : Duplicate" >> $output_path/skipped.txt
+		set my_status = 1; @ session_count++; continue;
+	endif
+	
+	#make subject directory if it does not exist
+	if ( ! -e $session_data_path ) mkdir $session_data_path; 
+	
+	#run ArcRead to get a list of the scans for the current sessions
+	ArcRead -u $username -p $pass -host https://cnda.wustl.edu -s $session -o $session_data_path/
+	cd $session_data_path; set readfile = `ls *.txt`;
+	if ( $? != 0 ) then
+		echo "ArcRead could not find $session. Skipping...."
+		echo "$session : ArcRead" >> $output_path/skipped.txt
+		set my_status = 1; @ session_count++; continue;
+	endif
+	
+	#Setup search strings
+	if ( $quality > 1 ) then
+		set t1_search = "t1_mpr_1mm_p2_pos50[[:space:]][[:space:]][[:space:]]usable\|t1_mpr_1mm_p2_pos50.*questionable"
+		set mp_search = "MPRAGE.*[[:space:]][[:space:]][[:space:]]usable\|MPRAGE.*questionable"
+		set quality_string = "usable,questionable"
+	else
+		set t1_search = "t1_mpr_1mm_p2_pos50[[:space:]][[:space:]][[:space:]]usable"
+		set mp_search = "MPRAGE.*[[:space:]][[:space:]][[:space:]]usable"
+		set quality_string = "usable"
+	endif
+	
+	#Use search strings to figure out name for T1
+	grep -qi $t1_search $readfile
+	if ( $? != 0 ) then
+		grep -qi $mp_search $readfile
+		if ( $? != 0 ) then
+			echo "$session does not have an MPRAGE of sufficient quality. Skipping..."
+			echo "$session : No MPRAGE" >> $output_path/skipped.txt
+			set my_status = 1; @ session_count++; continue;
+		else
+			set mp_name = "MPRAGE"; set arc_string = ( )
+				
+			#check for MPRAGE
+			grep -i $mp_search $readfile | grep -vi "GRAPPA" | grep -vqi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( "-r MPRAGE" )
+			endif
+			
+			#check for MPRAGE repeat
+			grep -i $mp_search $readfile | grep -vi "GRAPPA" | grep -qi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( $arc_string "-r MPRAGE+repeat" )
+			endif
+			
+			#check for GRAPPA2
+			grep -i $mp_search $readfile | grep -i "GRAPPA" | grep -vqi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( $arc_string "-r MPRAGE+GRAPPA2" )
+			endif
+			
+			#check for GRAPPA2 repeat
+			grep -i $mp_search $readfile | grep -i "GRAPPA" | grep -qi "repeat"
+			if ( $? == 0 ) then
+				set arc_string = ( $arc_string "-r MPRAGE+GRAPPA2+repeat" )
+			endif
+		endif		
+	else
+		set arc_string = "-r t1_mpr_1mm_p2_pos50"
+		set mp_name = "t1_mpr_1mm_p2_pos50"
+	endif
+	
+	#check to see if there is a MPRAGE for specificed run number before downloading
+	if ( $?specific == 1 ) then
+		#setup search strings
+		if ( $quality > 1 ) then
+			set search = "$mprages[$session_count].*$mp_name.*[[:space:]][[:space:]][[:space:]]usable\|$mprages[$session_count].*$mp_name.*questionable"
+		else
+			set search = "$mprages[$session_count].*$mp_name.*[[:space:]][[:space:]][[:space:]]usable"
+		endif
+		# use search strings to check if run is an MPRAGE
+		grep -qi $search $readfile
+		if ( $? != 0) then
+			echo "Run $mprages[$session_count] is not a MPRAGE of specified quality. Skipping..."
+			echo "$session : No MPRAGE for run $mprages[$session_count]" >> $output_path/skipped.txt
+			set my_status = 1; @ session_count++; continue;
+		endif
+	endif
+		
+	#Download files with ArcGet
+	ArcGet -u $username -p $pass -host https://cnda.wustl.edu -s $session \
+	-o $session_data_path/temp $arc_string -z true -di -quality $quality_string
+	
+	#check to see if any of the normal extensions are present
+	set raw_number = `find temp/ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) | wc -l`
+	if ( $raw_number == 0 ) then
+		#try to use dicom to nifti's recursive conversion to see if any files without the normal
+		#extensions are present. This adds support for Sonata scans.
+		dcm2nii -r n -g n -o ./ temp/
+		set nii_check = `ls *.nii`
+		if ( $? != 0 ) then
+			echo "Could not find any converable data for $session"
+			echo "$session : No Convertable data" >> $output_path/skipped.txt
+			set my_status = 1; @ session_count++; continue;
+		else
+			rm -R temp/
+		endif
+	else
+		find temp/ \( -name "*.dcm" -o -name "*.IMA" -o -name "*.ima" \) -exec mv {} ./ \;
+		rm -R temp/
+	
+		#check to see if the images are in dicom or IMA format.
+		set first_image = `ls * | grep -v ".*txt" | head -1`
+		set probe = `mri_probedicom --i $first_image --d filetype`
+		if ( $probe == "notdicom" ) then
+			set probe = `mri_probe_ima --i $first_image --d isima`
+			if ( $probe == 1 ) then
+				echo "Error converting raw data for $session. Skipping..."
+				echo "$session : Unable to convert raw data" >> $output_path/skipped.txt
+				set my_status = 1; @ session_count++; continue;
+			else
+				set mp_numbers = `grep -c "$mp_name   usable" $readfile`
+				@ count = 1
+				while ( $count <= $mp_numbers )
+					if ( $quality > 1 ) then
+						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]usable\|${mp_name}.*questionable" $readfile | sed -n "${count}p"`
+					else
+						set root = `grep "${mp_name}.*[[:space:]][[:space:]][[:space:]]usable" $readfile | sed -n "${count}p"`
+					endif
+					set root_image = `ls ${root[1]}* | head -1`
+					set run = `echo $root_image | grep -o '\-[0-9]\-' | sed 's/-//g'`
+					mri_convert $root_image s`printf "%03d" $run`.nii
+					@ count++
+				end				
+			endif
+		else
+			#convert raw files to nifti. Do not crop/reorient or gzip. 
+			dcm2nii -r n -g n * 
+		endif
+	endif
+	
+	#set up the recon images. 
+	set raw_nii = `ls *.nii`; set recon_images = (); @ recon_count = 1
+	while ($recon_count <= $#raw_nii )
+		#if user wanted, only use the specificed run number
+		if ( $?specific == 1 ) then
+			#Sed command is to remove s and leading zeros if present
+			set run = `echo $raw_nii[$recon_count] |grep -o "s[0-9]\{3\}" | sed 's/^s0*//g'`
+			if ( $run == $mprages[$session_count] ) then
+				set recon_images = ( $recon_images \
+				"-i $session_data_path/$raw_nii[$recon_count]" )
+			endif
+		else
+			#Do not exceed the maximum number of MPRAGEs.
+			if ( $recon_count <= $max ) then
+				set recon_images = ( $recon_images "-i $session_data_path/$raw_nii[$recon_count]" )
+			endif
+		endif
+		@ recon_count++
+	end
+	
+	#check to if recon_images is setup ok
+	if ( $#recon_images == 0 ) then
+		echo "Error setting up recon-all. Skipping session..."
+		echo "$session : recon-all setup" >> $output_path/skipped.txt
+		set my_status = 1; @ session_count++; continue;
+	endif
+	
+	#create the batch file
+	echo "#PBS -N ${session} -l nodes=1:ppn=1:idataplex,walltime=${wtime},vmem=${vmem}gb -q dque"\
+	"$email -o ${session_free_path}/${session}.out -e ${session_free_path}/${session}.error" \
+	> ${session}.batch
+	echo "#Setup FreeSurfer Processing" >> ${session}.batch
+	echo "export SUBJECTS_DIR=${output_path}/sessions" >> ${session}.batch
+	echo "export FREESURFER_HOME=/export/freesurfer-$free_ver" >> ${session}.batch
+	echo 'export PATH=${FREESURFER_HOME}/bin:${PATH}' >> ${session}.batch
+	echo 'export PATH=${FREESURFER_HOME}/mni/bin:${PATH}' >> ${session}.batch
+	echo 'export PERL5LIB=${FREESURFER_HOME}/mni/lib/perl5/5.8.5/' >> ${session}.batch
+	
+	#turn on hippocampus subfield segmentation for version 5.1.
+	if ( $free_ver == "5.1" && $?nohippo == 0 ) then
+		echo "recon-all -s $session $recon_images -all -qcache -hippo-subfields" >> ${session}.batch
+	else
+		echo "recon-all -s $session $recon_images -all -qcache" >> ${session}.batch
+	endif
+	
+	#copy batch and params to freesurfer session_folder
+	echo "cp $session_data_path/${session}.batch $session_data_path/${session}.params"
+	     "$session_free_path/" >> ${session}.batch
+	
+	#unless user overrides, submit in a group
+	if ( $?sub == 0 ) then
+		#add session to qsub array
+		set qsubarray = ( $qsubarray $session )
+	else
+		#submit each session individually
+		echo "Submiting session: $session to cluster...."
+		qsub $session_data_path/${session}.batch
+		#if this is the first session, link fsaverage
+		if ( $session_count == 1 ) ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" \
+		$output_path/sessions/fsaverage
+	endif
+	
+	@ session_count++; @ proc_count++
+end
+
+#check to make sure at least one session was successfuly processed
+if ( $proc_count == 0 ) then
+	echo "No sessions were processed successfully. Exiting..."
+	exit 1
+endif
+
+#unless user overrides, launch using qsubcontainer
+if ( $?sub == 0 ) then
+	#create qsub container
+	echo -n "" > $output_path/qsubcontainer.sh
+	foreach qsession ( $qsubarray )
+		echo "qsub $output_path/raw_data/$qsession/${qsession}.batch" >> \
+		$output_path/qsubcontainer.sh
+		if ( $qsession != $qsubarray[$#qsubarray] ) echo "sleep 2" >> $output_path/qsubcontainer.sh
+	end
+
+	#link fsaverage for qcache
+	ln -s "/export/freesurfer-${free_ver}/subjects/fsaverage" $output_path/sessions/fsaverage
+endif
+
+#finish up
+if ( $my_status == 0 ) then	
+	echo "${program} finished without errors."
+	if ( $?sub == 0 ) echo "Type: sh $output_path/qsubcontainer.sh to launch jobs."
+else
+	echo "${program} finished, but there was an error. See $output_path/skipped.txt to see what"\
+	"jobs failed"
+	if ( $?sub == 0 ) echo "You can launch the jobs that did not fail by typing: sh"\
+	"$output_path/qsubcontainer.sh to launch jobs."	
+endif
+
+
+	
+	
+	
+
+
+			
