@@ -30,7 +30,6 @@ arg_parse.add_argument('-sthresh',help='Standard deviation threshold for standar
 arg_parse.add_argument('-unfilt',action='store_const',const=1,help='Output unfiltered perfusion \
 					  average.')
 args = arg_parse.parse_args()
-args = arg_parse.parse_args()
 
 #Load images
 try:
