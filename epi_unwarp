@@ -16,7 +16,7 @@ if ($#argv == 0) then
 	echo "	-m: field map magnitude image"
 	echo "	-p: field map phase image"
 	echo "	-e: EPI to unwarp."
-	echo "	-dwell: EPI dwell time. In milliseconds"
+	echo "	-dwell: EPI dwell time/echospacing. Divide by acceleration factor if necessary. In milliseconds"
 	echo "	-te: EPI echo time. In milliseconds"
 	echo "	-delta: Difference between field map echo times. In milleseconds."
 	echo ""
