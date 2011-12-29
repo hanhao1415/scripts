@@ -152,7 +152,10 @@ set range = `fslstats ${outroot}phase -R`.
 if ( $range[1] == -4096.000000 && $range[2] == 4092.000000 ) then
 	$FSL/fslmaths ${outroot}phase -div 4096 -mul 3.14159265 ${outroot}phase_rad -odt float
 else if ( $range[1] == 0.000000 && $range[2] == 4094.000000 ) then
-	$FSL/fslmaths ${outroot}phase -sub 2047 -div 2047 -mul 3.14159265 ${outroot}phase_rad -odt float		
+	$FSL/fslmaths ${outroot}phase -sub 2047 -div 2047 -mul 3.14159265 ${outroot}phase_rad -odt float
+else if ( $range[1] == 0.000000 && $range[2] == 4095.000000 ) then
+	$FSL/fslmaths ${outroot}phase -sub 2047.5 -div 2047.5 -mul 3.14159265 ${outroot}phase_rad \
+				  -odt float
 else
 	echo "Range of phase map is not -4096.000000 to 4092.000000. Exiting..."
 	exit 1
