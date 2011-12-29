@@ -1,6 +1,13 @@
 #!/bin/tcsh -f
 #Tyler Blazey, 2011.
 
+if ( $?FSLDIR == 0 ) then
+	echo "FSLDIR environment variable needs to be set before running scripts."
+	exit 1
+else
+	set FSL = "$FSLDIR/bin"
+endif
+
 #######
 #Usage#
 #######
@@ -16,7 +23,7 @@ if ($#argv == 0) then
 	echo "	-m: field map magnitude image"
 	echo "	-p: field map phase image"
 	echo "	-e: EPI to unwarp."
-	echo "	-dwell: EPI dwell time/echospacing. Divide by acceleration factor if necessary. In milliseconds"
+	echo "	-dwell: EPI dwell time/echo spacing. Divide by acceleration factor if necessary. In milliseconds"
 	echo "	-te: EPI echo time. In milliseconds"
 	echo "	-delta: Difference between field map echo times. In milleseconds."
 	echo ""
@@ -34,8 +41,8 @@ if ($#argv == 0) then
 	echo "	-boldmc: Apply mcflirt to bold input. Will only resample once."
 	echo " 	-nomask: Do not use mask when applying motion correction."
 	echo "	-epibet: BET fractional intensity threshold for EPI. Default is .2"
-	echo "	-debug: Turn on set echo."
 	echo " 	-dil: Dilate magnitude brain mask before applying to motion corrected EPI."
+	echo "	-debug: Turn on set echo."
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
@@ -53,10 +60,25 @@ while ($#argv > 0)
 	set flag = $argv[1]; shift;
 	switch ($flag)
 		case -m:
+			set imcheck = `$FSL/imtest $argv[1]`
+			if ( $imcheck == 0 ) then
+				echo "Cannot find magnitude image at $argv[1]."
+				exit 1
+			endif
 			set mag = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -e:
+			set imcheck = `$FSL/imtest $argv[1]`
+			if ( $imcheck == 0 ) then
+				echo "Cannot find epi image at $argv[1]."
+				exit 1
+			endif
 			set epi = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -p:
+			set imcheck = `$FSL/imtest $argv[1]`
+			if ( $imcheck == 0 ) then
+				echo "Cannot find phase image at $argv[1]."
+				exit 1
+			endif
 			set phase = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -o:
 			set outpath = $argv[1]; shift; breaksw;
@@ -122,7 +144,6 @@ if ($reg == "smooth" && $?mm3 == 0) set mm3 = 5
 if ($?dir == 0) set dir = "y-"
 if ($?unwrap == 0) set unwrap = 1
 if ($?epibet == 0 ) set epibet = .2
-set FSL = $FSLDIR/bin
 
 #Check to make sure -reg is set correctly
 set reg_options = ( "smooth" "median" "none" "despike"); echo $reg_options | grep -qw $reg;
@@ -157,7 +178,7 @@ else if ( $range[1] == 0.000000 && $range[2] == 4095.000000 ) then
 	$FSL/fslmaths ${outroot}phase -sub 2047.5 -div 2047.5 -mul 3.14159265 ${outroot}phase_rad \
 				  -odt float
 else
-	echo "Range of phase map is not -4096.000000 to 4092.000000. Exiting..."
+	echo "Phase map is not within expected range. Exiting..."
 	exit 1
 endif
 
