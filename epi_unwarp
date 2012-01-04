@@ -90,7 +90,7 @@ while ($#argv > 0)
 			set dwell = `echo "$argv[1]/1000" | bc -l`; shift; breaksw;
 		case -delta:
 			set delta = `echo "$argv[1]/1000" | bc -l`; shift; breaksw;
-		case -thresh
+		case -thresh:
 			set thresh = `echo "1-$argv[1]" | bc -l` ; shift; breaksw;
 		case -frame:
 			set frame = $argv[1]; shift; breaksw;
