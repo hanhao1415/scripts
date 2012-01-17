@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/Library/Frameworks/Python.framework/Versions/Current/bin/python
 
 """
 
@@ -174,59 +174,62 @@ if (np.log(np.amax(frame_std_array)-np.amin(frame_std_array))) < 1:
 	print "No filtering will be performed."
 	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=mask_array_4d)
 else:
-
+	
 	#Setup empty masks for frame and slice outliers
-	frame_filt_mask = np.zeros_like(perf_data)
-	slice_filt_mask = np.zeros_like(perf_data)
+	frame_filt_mask = np.ma.empty_like(perf_data)
+	slice_filt_mask = np.ma.empty_like(perf_data)
+	frame_outlier_count = 0
+	slice_outlier_count = 0
 	
 	#Get the avg and standard deviation across frames
 	frame_avg = np.ma.mean(perf_masked_data,dtype=np.float64)
 	frame_std = np.ma.std(perf_masked_data,dtype=np.float64)
 	
 	#Get the average frame std and std of stds
-	frame_std_avg = np.mean(frame_std_array,dtype=np.float64)
-	frame_std_std = np.std(frame_std_array,dtype=np.float64)
+	frame_std_avg = np.ma.mean(frame_std_array,dtype=np.float64)
+	frame_std_std = np.ma.std(frame_std_array,dtype=np.float64)
 	
 	#Setup mean and standard deviation outlier thresholds for frames
 	frame_out_avg = frame_avg + (args.mthresh[0] * frame_std)
 	frame_out_std = frame_std_avg + (args.sthresh[0] * frame_std_std)
-	
+
 	#Setup arrays for slice means and standard deviations
-	slice_avg_array = np.zeros(perf_masked_data.shape[3])
-	slice_std_array = np.zeros(perf_masked_data.shape[3])
+	slice_avg_array = np.ma.zeros(perf_masked_data.shape[3])
+	slice_std_array = np.ma.zeros(perf_masked_data.shape[3])
 	
 	for slice in range(perf_masked_data.shape[2]):
-		
 		#Get the mean and standard deviation for slice across time
 		slice_avg = np.ma.abs(np.ma.mean(perf_masked_data[:,:,slice,:],dtype=np.float64))
  		slice_std = np.ma.std(perf_masked_data[:,:,slice,:],dtype=np.float64)
- 		 
+ 		
  		for frame in range(perf_masked_data.shape[3]):
- 		 		
  		 		#Check for frames outliers
  		 		if slice == 0:
-					if np.abs(np.ma.mean(perf_masked_data[:,:,:,frame]),dtype=np.float64) > frame_out_avg \
+					if np.ma.abs(np.ma.mean(perf_masked_data[:,:,:,frame]),dtype=np.float64) > frame_out_avg \
 							or frame_std_array[frame] > frame_out_std:
 						frame_filt_mask[:,:,:,frame] = 1
-				
+						frame_outlier_count += 1
+	
 				#Get the average and std for slice within frame
 				slice_avg_array[frame] = np.ma.abs(np.ma.mean(perf_masked_data[:,:,slice,frame]),dtype=np.float64)
 				slice_std_array[frame] = np.ma.std(perf_masked_data[:,:,slice,frame],dtype=np.float64)
-				
+
 		#Get the average std and the std of std for the slice
-		slice_std_avg = np.mean(slice_std_array)
- 		slice_std_std = np.std(slice_std_array,dtype=np.float64)
+		slice_std_avg = np.ma.mean(slice_std_array)
+ 		slice_std_std = np.ma.std(slice_std_array,dtype=np.float64)
 
 		#Determine the outliers thresholds for the slices
  		slice_out_avg = slice_avg + ( args.mthresh[0] * slice_std )
  		slice_out_std  = slice_std_avg + ( args.sthresh[0] * slice_std_std )
- 		
+
  		#Check for slice outliers
  		for frame in range(perf_masked_data.shape[3]):
  			if slice_avg_array[frame] > slice_out_avg or slice_std_array[frame] > slice_out_std:
  				slice_filt_mask[:,:,slice,frame] = 1
- 	
+ 				slice_outlier_count += 1
+ 		
  	#Combine all the masks
+ 	print 'Rejecting %i outlier frames and %i outlier slices.'%(frame_outlier_count,slice_outlier_count)
  	comb_filt_mask = np.ma.mask_or(frame_filt_mask,slice_filt_mask)
 	comb_filt_mask = np.ma.mask_or(comb_filt_mask,np.ma.make_mask(mask_array_4d))
 	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=comb_filt_mask)

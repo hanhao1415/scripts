@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/Library/Frameworks/Python.framework/Versions/Current/bin/python
 
 """
 
@@ -85,16 +85,16 @@ gm_pbmap_data = gm_pbmap.get_data()
 wm_pbmap_data = wm_pbmap.get_data()
 
 #Create masking arrays
-mask_array = (brain_mask_data - 1) * - 1 #have to invert, as numpy masks out 1s and includes 0s
+mask_array_3d = (brain_mask_data - 1) * - 1 #have to invert, as numpy masks out 1s and includes 0s
 mask_array_4d = np.empty_like(perf_data)
 mask_array_4d = np.repeat(np.expand_dims(mask_array_3d,axis=3),perf_data.shape[3],axis=3)
 
 #Setup masked arrays
-m0_masked = np.ma.array(m0_data,mask=mask_array)
+m0_masked = np.ma.array(m0_data,mask=mask_array_3d)
 perf_masked = np.ma.array(perf_data,mask=mask_array_4d)
-csf_masked = np.ma.array(csf_pbmap_data,mask=mask_array)
-gm_masked = np.ma.array(gm_pbmap_data,mask=mask_array)
-wm_masked = np.ma.array(wm_pbmap_data,mask=mask_array)
+csf_masked = np.ma.array(csf_pbmap_data,mask=mask_array_3d)
+gm_masked = np.ma.array(gm_pbmap_data,mask=mask_array_3d)
+wm_masked = np.ma.array(wm_pbmap_data,mask=mask_array_3d)
 	
 #Setup empy arrays
 mcsf_pvc_data = np.ones_like(m0_data)
@@ -115,7 +115,7 @@ for dim_3 in range(perf.shape[2]):
 		for dim_1 in range(perf.shape[0]):	
 			
 			#If voxel is outside of brain mask, set that voxel to zero for all maps
-			if mask_array[dim_1,dim_2,dim_3] == 1:
+			if mask_array_3d[dim_1,dim_2,dim_3] == 1:
 				if args.nocsf[0] == 0:
 					[mcsf_pvc_data[dim_1,dim_2,dim_3],mgm_pvc_data[dim_1,dim_2,dim_3],
 					mwm_pvc_data[dim_1,dim_2,dim_3],dcsf_pvc_data[dim_1,dim_2,dim_3,:],
