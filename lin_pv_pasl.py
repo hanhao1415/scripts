@@ -87,7 +87,7 @@ wm_pbmap_data = wm_pbmap.get_data()
 #Create masking arrays
 mask_array = (brain_mask_data - 1) * - 1 #have to invert, as numpy masks out 1s and includes 0s
 mask_array_4d = np.empty_like(perf_data)
-mask_array_4d[:,:,:,:] = np.expand_dims(mask_array,axis=3)
+mask_array_4d = np.repeat(np.expand_dims(mask_array_3d,axis=3),perf_data.shape[3],axis=3)
 
 #Setup masked arrays
 m0_masked = np.ma.array(m0_data,mask=mask_array)
