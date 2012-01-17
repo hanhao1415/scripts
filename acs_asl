@@ -557,18 +557,23 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 	if (( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
 			&& ( ! -e ${cbf}_outlier_mask.nii.gz || $?force == 1)) then
 		
-		#Use Freesurfer to get a non-zero mask for asl. Erode a little bit to get rid of edges
+		#Use Freesurfer to get a defined asl mask
 		set cmd = ( $FREESURFER_HOME/bin/mri_binarize --i ${cbf}_to_free.nii.gz --match 0 --inv )
+		set cmd = ( $cmd --o ${cbf}_defined_mask.nii.gz )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+		
+		#Use Freesurfer to get a filtering mask. Erode a little bit to get rid of edges
+		set cmd = ( $FREESURFER_HOME/bin/mri_binarize --i ${cbf}_defined_mask.nii.gz --match 1 )
 		set cmd = ( $cmd --erode 1 --zero-edges --o ${cbf}_to_free_filt_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		
 		#Use FSL to get 1st and 99th percentile
-		set min = `$FSLDIR/bin/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -P 1`
-		set max = `$FSLDIR/bin/fslstats${cbf}_to_free -k $${cbf}_to_free_filt_mask -P 99`
+		set min = `$FSLDIR/bin/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -p 1`
+		set max = `$FSLDIR/bin/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -p 99`
 		
 		#Use FreeSurfer to get a outlier mask
 		set cmd = ( $FREESURFER_HOME/bin/mri_binarize --i ${cbf}_to_free.nii.gz --min $min )
-		set cmd = ( $cmd --max $max $cmd --o ${cbf}_outlier_mask.nii.gz )
+		set cmd = ( $cmd --max $max --mask ${cbf}_defined_mask.nii.gz --o ${cbf}_outlier_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 										 		
@@ -628,7 +633,7 @@ while ( $count <= 2 )
 	endif
 	
 	#Use FSL to create displacement plots
-	if ( ! -e ${pout}_${count}__disp.png || $?force == 1 ) then
+	if ( ! -e ${qout}_${count}_disp.png || $?force == 1 ) then
 		set cmd = ( $FSLDIR/bin/fsl_tsplot )
 		set cmd = ( $cmd -i ${pout}_${count}_mcf_abs.rms,${pout}_${count}_mcf_rel.rms )
 		set cmd = ( $cmd -u 1 -w 640 -h 144 -o ${qout}_${count}_disp.png -a abs,rel )
@@ -757,13 +762,13 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	set run1_rel = `cat ${pout}_1_mcf_rel_mean.rms`; set run1_abs = `cat ${pout}_1_mcf_abs_mean.rms`
 	set run2_rel = `cat ${pout}_2_mcf_rel_mean.rms`; set run2_abs = `cat ${pout}_2_mcf_abs_mean.rms`
 	echo "Run1: MCFLIRT Estimated Displacements(mm): Absolute=$run1_abs Relative=$run1_rel" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${qout}_1_rot.png>" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${qout}_1_trans.png>" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${qout}_1_disp.png>" >> ${qout}_asl_qa_mc.html
-	echo "Run2: MCFLIRT Estimated Displacements(mm): Absolute=$run2_abs Relative=$run2_rel" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${qout}_2_rot.png>" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${qout}_2_trans.png>" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${qout}_2_disp.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${root}_1_rot.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${root}_1_trans.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${root}_1_disp.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p>Run2: MCFLIRT Estimated Displacements(mm): Absolute=$run2_abs Relative=$run2_rel" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${root}_2_rot.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${root}_2_trans.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${root}_2_disp.png>" >> ${qout}_asl_qa_mc.html
 	
 	
 	#Setup Brain Masking
