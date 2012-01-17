@@ -23,21 +23,22 @@ if ( $#argv == 0 ) then
 	echo "	-r1: <asl1>		First ASL run."
 	echo "	-r2: <asl2>		Second Asl run."
 	echo "	-tse: <tse>		Turbo spin echo image."
-	echo " 	-subj: <subj>	Freesurfer subject ID."
+	echo " 	-subj: <subj>		Freesurfer subject ID."
 	echo ""
 	echo "Optional Arguments:"
-	echo "	-root: <root>	Root for outputed files."
+	echo "	-root: <root>		Root for outputed files. Default is FreeSurfer Subject ID."
 	echo "	-outdir: <outdir>	Output directory. Default is <root>."
 	echo '	-subjdir: <dir>		Set FreeSurfer subjects directory. Default is current $SUBJECTS_DIR.'
 	echo "	-simple:		Do simple subtraction. Default is sinc."
-	echo "	-unfilt: 	Output CBF data with and without outlier removal."
+	echo "	-unfilt: 		Output CBF data with and without outlier removal."
 	echo "	-mthresh: <thresh>	Threshold for mean perfusion outliers. Default is 2.5."
-	echo "  -sthresh: <thresh>	Threshold for standard deviation perfusion outliers. Default is 1.5"
+	echo "	-sthresh: <thresh>	Threshold for standard deviation perfusion outliers. Default is 1.5"
 	echo "	-kernel: <kernel>	Size of regression kernel for partial volume correction. Default is 5.0."
-	echo "	-nocsf: 	Assume that there is no perfusion in CSF for partial volume correction."
-	echo "	-out4d:		Output a 4d cbf image."
-	echo "	-fwhm: <fwhm>	FWHM for surface smoothing. Default is 5."
-	echo "	-force: 	Run command even if output exists."
+	echo "	-nocsf: 		Assume that there is no perfusion in CSF for partial volume correction."
+	echo "	-out4d:			Output a 4d cbf image."
+	echo "	-fwhm: <fwhm>		FWHM for surface smoothing. Default is 5."
+	echo "	-bthresh <thresh>	Threshold for BET masking. Default is 0.1."
+	echo "	-force: 		Run command even if output exists."
 	echo "	-gthresh: <thresh>	Threshold for gray matter mask. Default is .3"
 	echo "	-roithresh: <thresh>	Threshold for ROI sampling. Default is 1.5"
 	echo "	-debug			Turn on set echo."
@@ -62,7 +63,7 @@ while ( $#argv > 0 )
 		case -tse:
 			set tse = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -subj:
-			set subject = $argv[1]; shift; breaksw;
+			set subj = $argv[1]; shift; breaksw;
 		case -root:
 			set root = $argv[1]; shift; breaksw;
 		case -outdir:
@@ -71,6 +72,8 @@ while ( $#argv > 0 )
 			set mthresh = $argv[1]; shift; breaksw;
 		case -sthresh:
 			set sthresh = $argv[1]; shift; breaksw;
+		case -bthresh:
+			set bthresh: = $argv[1]; shift; breaksw;
 		case -fwhm:
 			set fwhm = $argv[1]; shift; breaksw;
 		case -simple:
@@ -98,7 +101,7 @@ while ( $#argv > 0 )
 		case -roithresh:
 			set roithresh = $argv[1]; shift; breaksw;
 		case -debug:
-			set debug = 1; breasw;
+			set debug = 1; breaksw;
 		default:
 			"Option $flag not recognized. See usage"
 			exit 1
@@ -107,14 +110,14 @@ end
 if ( $?debug == 1 ) set echo
 
 #Check to make sure all required options have been set
-if ( $?run1 == 0 || $?run2 == 0 || $?subject == 0 ) then
+if ( $?run1 == 0 || $?run2 == 0 || $?subj == 0 || $?tse == 0 ) then
 	echo "Missing required arguments. See usage."
 	exit 1
 endif
 
 #Check to see subject is within SUBJECTS_DIR
-if ( ! -e $SUBJECTS_DIR/$subject ) then
-	echo "Cannot find Subject: $subject within SUBJECTS_DIR: $SUBJECTS_DIR"
+if ( ! -e $SUBJECTS_DIR/$subj ) then
+	echo "Cannot find Subject: $subj within SUBJECTS_DIR: $SUBJECTS_DIR"
 	exit 1
 endif
 
@@ -165,11 +168,11 @@ echo "" |& tee -a $log
 ########################
 ###ASL Pre-Processing###
 ########################
-set pdir = $outdir/asl; if ( ! -d $pdir ) mkdir $pdir; set pout= $pdir/${root}_asl
+set pdir = $outdir/asl; if ( ! -d $pdir ) mkdir $pdir; set pout = $pdir/${root}_asl
 set tout = $pdir/${root}_tse
 
 #Use FSL to copy over input images
-if ( ! -e ${pout}_1.nii.gz || ! -e ${pout}_2.nii.gz || ! -e ${pout}_tse.nii.gz || $?force ==1 ) then
+if ( ! -e ${pout}_1.nii.gz || ! -e ${pout}_2.nii.gz || ! -e ${tout}.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/imcp $run1 ${pout}_1 ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSLDIR/bin/imcp $run2 ${pout}_2 ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSLDIR/bin/imcp $tse $tout ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -188,7 +191,7 @@ if ( ! -e ${pout}_col_m0.nii.gz || $?force == 1 ) then
 endif
 
 #Use FSL to register collated m0 to tse
-if ( ! -e ${pout}_asl_col_m0_to_tse.mat || $?force == 1 ) then
+if ( ! -e ${pout}_col_m0_to_tse.mat || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/flirt -ref $tout -in ${pout}_col_m0 -dof 6 )
 	set cmd = ( $cmd -omat ${pout}_col_m0_to_tse.mat -nosearch -cost mutualinfo ) 
 	set cmd = ( $cmd -out ${pout}_col_m0_to_tse )
@@ -198,13 +201,13 @@ endif
 #Use FSL to invert asl->tse transform
 if ( ! -e ${tout}_to_asl_col_m0.mat || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/convert_xfm -omat ${tout}_to_asl_col_m0.mat )
-	set cmd = ( $cmd -inverse ${pout}_asl_col_m0_to_tse.mat )
+	set cmd = ( $cmd -inverse ${pout}_col_m0_to_tse.mat )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 #Use FSL to resample tse
 if ( ! -e ${tout}_to_asl_col_m0.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSLDIR/bin/applywarp -i $out -r ${pout}_col_m0 )
+	set cmd = ( $FSLDIR/bin/applywarp -i $tout -r ${pout}_col_m0 )
 	set cmd = ( $cmd -o ${tout}_to_asl_col_m0 --super --superlevel=4 --interp=spline )
 	set cmd = ( $cmd --premat=${tout}_to_asl_col_m0.mat  )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -218,44 +221,17 @@ endif
 
 @ count = 1
 while ( $count <= 2 )
-	#USE FSL for within run motion correction
+	#Use FSL for within run motion correction
 	if ( ! -e  ${pout}_${count}_mcf.nii.gz ||  $?force == 1 ) then
 		set cmd = ( $FSLDIR/bin/mcflirt -in ${pout}_${count} -mats -plots -rmsrel -rmsabs -refvol 0 )
 		set cmd = ( $cmd -out ${pout}_${count}_mcf -cost mutualinfo )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 	
-	#Use FSL to create Rotation plot
-	if ( ! -e ${pout}_${count}_rot.png || $?force == 1 ) then	
-		#Create rotation plots
-		set cmd = ( $FSLDIR/bin/fsl_tsplot -i ${pout}_${count}_mcf.par -w 640 -h 144 ) 
-		set cmd = ( $cmd -a x,y,z -u 1 --start=1 --finish=3 -o ${pout}_${count}_rot.png )
-		echo $cmd -t 'Estimated Rotations (radians)' |& tee -a $log
-		$cmd -t 'Estimated Rotations (radians)' |& tee -a $log
-	endif
-		
-	#Use FSL to create translation plots
-	if ( ! -e  ${pout}_${count}_trans.png || $?force == 1 ) then
-		set cmd = ( $FSLDIR/bin/fsl_tsplot -i ${pout}_${count}_mcf.par -u 1 --start=4 )
-		set cmd = ( $cmd --finish=6 -a x,y,z  -w 640 -h 144 -o ${pout}_${count}_trans.png )
-		echo $cmd -t 'Estimated Translations (mm)' |& tee -a $log
-		$cmd -t 'Estimated Translations (mm)' |& tee -a $log
-	endif
-	
-	#Use FSL to create displacement plots
-	if ( ! -e ${pout}_${count}__disp.png || $?force == 1 ) then
-		set cmd = ( $FSLDIR/bin/fsl_tsplot )
-		set cmd = ( $cmd -i ${pout}_${count}_mcf_abs.rms,${pout}_${count}_mcf_rel.rms )
-		set cmd = ( $cmd -u 1 -w 640 -h 144 -o ${pout}_${count}_disp.png -a abs,rel )
-		echo $cmd -t 'Estimated Displacements (mm)'  |& tee -a $log
-		$cmd -t 'Estimated Displacements (mm)' |& tee -a $log
-	endif
-	
 	#Use FSL to extract the reference frame
 	if ( ! -e ${pout}_${count}_m0.nii.gz || $?force == 1 ) then
 		 set cmd = ( $FSLDIR/bin/fslroi ${pout}_${count} ${pout}_${count}_m0 0 1 )
-		 echo $cmd |& tee -a $log
-		 $cmd |& tee -a $log
+		 echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 	
 	#Use FSL to run between run alignment using the split tse as a reference		 
@@ -269,11 +245,11 @@ while ( $count <= 2 )
 	#Apply motion correction in one step
 	if ( ! -e ${pout}_${count}_mc.nii.gz || $?force == 1 ) then
 		#Use FSL to split the raw run
-		set cmd = ( $FSLDIR/bin/fslsplit ${pout}_${count} -t )
+		set cmd = ( $FSLDIR/bin/fslsplit ${pout}_${count} ${pout}_vol -t )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		
 		#Use FSL to apply between and within run motion correction in one step
-		foreach vol ( vol*.nii.gz )
+		foreach vol ( ${pout}_vol*.nii.gz )
 			set num = `echo $vol | sed 's/vol//g' | sed 's/.nii.gz//g'`
 			set cmd = ( $FSLDIR/bin/applywarp -i $vol -o ${vol:r:r}_transformed -r $vol )
 			set cmd = ( $cmd --premat=${pout}_${count}_mcf.mat/MAT_${num} )
@@ -282,11 +258,11 @@ while ( $count <= 2 )
 		end
 		
 		#Use FSL to merge the transformed volumes
-		set cmd = ( $FSLDIR/bin/fslmerge -t ${pout}_${count}_mc vol*_transformed*.nii.gz )
+		set cmd = ( $FSLDIR/bin/fslmerge -t ${pout}_${count}_mc ${pout}_vol*_transformed*.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		
 		#Delete the volumes
-		set cmd = ( rm vol*.nii.gz )
+		set cmd = ( rm ${pout}_vol* )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 	
@@ -306,16 +282,10 @@ if ( ! -e ${pout}_col_mc_m0.nii.gz || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
-#Use FSL to a ASL brain mask
+#Use FSL to get a ASL brain mask
 if ( ! -e ${pout}_col_mc_m0_brain_mask.nii.gz || $?force == 1 ) then 
-	set cmd = ( $FSLDIR/bin/bet ${pout}_col_mc_m0 ${pout}_col_mc_m0_brain -R -f 0.4 -m -n )
+	set cmd = ( $FSLDIR/bin/bet ${pout}_col_mc_m0 ${pout}_col_mc_m0_brain -R -f $bthresh -m -n )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
-endif
-
-#Use FSL to erode brain mask slightly
-if ( ! -e ${pout}_col_mc_m0_brain_mask_ero.nii.gz || $?force == 1 ) then
-	 set cmd = ( $FSLDIR/bin/fslmaths ${pout}_col_mc_m0_brain -ero ${pout}_col_mc_m0_brain_mask_ero )
-	 echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 ########################
@@ -360,8 +330,8 @@ if ( ! -e ${aout}_brain_cut_mask.nii.gz || $?force == 1 ) then
 endif
 
 #Register ASL to FreeSurfer T1
-if ( ! -e ${aout}asl_to_free.mat || $?force == 1 ) then
-	set cmd = ( $FSLDIR/bin/flirt -in ${pout}_col_mc_m0_brain -ref ${aout}_brain_cut_mask )
+if ( ! -e ${aout}_asl_to_free.mat || $?force == 1 ) then
+	set cmd = ( $FSLDIR/bin/flirt -in ${pout}_col_mc_m0_brain -ref ${aout}_brain_cut )
 	set cmd = ( $cmd -omat ${aout}_asl_to_free.mat -dof 6 -out ${aout}_asl_to_free -cost mutualinfo )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
@@ -373,10 +343,18 @@ if ( ! -e ${aout}_free_to_asl.mat || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
+#Use FSL to resample FreeSurfer brainmask to ASL space
+if ( ! -e ${aout}_brain_cut_mask_to_asl.nii.gz || $?force == 1 ) then
+	set cmd = ( $FSLDIR/bin/applywarp -i ${aout}_brain_cut_mask -r ${pout}_col_mc_m0_brain )
+	set cmd = ( $cmd --premat=${aout}_free_to_asl.mat -o ${aout}_brain_cut_mask_to_asl )
+	set cmd = ( $cmd -m ${pout}_col_mc_m0_brain_mask )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+endif
+
 #Use FSL to get a asl->free standard orientation transform
 if ( ! -e ${aout}_asl_to_free_std.mat || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/convert_xfm -omat ${aout}_asl_to_free_std.mat -concat )
-	set cmd = ( $cmd ${aout}_free_to_std.mat ${aout}_asl_to_free )
+	set cmd = ( $cmd ${aout}_free_to_std.mat ${aout}_asl_to_free.mat )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -390,24 +368,23 @@ endif
 #Convert ASL->Freesurfer to FreeSurfer format
 if ( ! -e ${aout}_asl_to_free.reg || $?force == 1 ) then
 	#Convert ASL->Freesurfer
-	set cmd = ( $FREESURFER_HOME/bin/tkregister2_cmdl --mov ${pout}_col_mc_m0_brain.nii.gz  )
-	set cmd = ( $cmd --targ ${aout}_brain_cut.nii.gz --s $subject )
-	set cmd = ( $cmd --fsl ${aout}_asl_to_free.mat -reg ${aout}_asl_to_free.reg )
+	set cmd = ( $FREESURFER_HOME/bin/tkregister2_cmdl --mov ${pout}_col_mc_m0_brain.nii.gz )
+	set cmd = ( $cmd --targ ${aout}_brain_cut.nii.gz --s $subj )
+	set cmd = ( $cmd --fsl ${aout}_asl_to_free.mat --reg ${aout}_asl_to_free.reg )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 #Convert Freesurfer->Asl to FreeSurfer Format
 if ( ! -e ${aout}_free_to_asl.reg || $?force == 1 ) then
-	#Convert Freesurfer->ASL
 	set cmd = ( $FREESURFER_HOME/bin/tkregister2_cmdl --targ ${pout}_col_mc_m0_brain.nii.gz )
-	set cmd = ( $cmd --s $subject --mov ${aout}_brain_cut.nii.gz )
+	set cmd = ( $cmd --s $subj --mov ${aout}_brain_cut.nii.gz )
 	set cmd = ( $cmd --fsl ${aout}_free_to_asl.mat --reg ${aout}_free_to_asl.reg )
-	echo $cmd |& tee -a $logl $cmd |& tee -a $log
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
-#Use FSL to do a linear registertion between T1 and MNI152
+#Use FSL to do a linear registration between T1 and MNI152
 if ( ! -e ${aout}_free_to_MNI152.mat || $?force == 1 ) then
-	set cmd = ( $FSLDIR/bin/flirt -in ${aout}_brain -omat ${aout}_free_to_MNI152.mat )
+	set cmd = ( $FSLDIR/bin/flirt -in ${aout}_brain_cut -omat ${aout}_free_to_MNI152.mat )
 	set cmd = ( $cmd -ref ${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
 	set cmd = ( $cmd -init  ${aout}_free_to_std.mat -o ${aout}_free_to_MNI152 -cost mutualinfo )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -421,7 +398,7 @@ if ( ! -e ${aout}_free_to_MNI152_coef.nii.gz || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
-#Use FSL to apply nonlinear registration to brain
+#Use FSL to apply nonlinear registration to free
 if ( ! -e ${aout}_free_warped_to_MNI152.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/applywarp --in=${aout}_brain --out=${aout}_free_warped_to_MNI152 )
 	set cmd = ( $cmd --ref=${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
@@ -431,7 +408,7 @@ if ( ! -e ${aout}_free_warped_to_MNI152.nii.gz || $?force == 1 ) then
 endif
 
 #Use FSL to get a warp from ASL to MNI 152 Space
-if ( ! -e ${aout}_dti_to_MNI152_coef.nii.gz || $?force == 1 ) then
+if ( ! -e ${aout}_asl_to_MNI152_coef.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/convertwarp --premat=${aout}_asl_to_free.mat )
 	set cmd = ( $cmd --warp1=${aout}_free_to_MNI152_coef --out=${aout}_asl_to_MNI152_coef )
 	set cmd = ( $cmd --ref=${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
@@ -475,7 +452,7 @@ endif
 set cdir = $outdir/cbf; if ( ! -d $cdir ) mkdir $cdir; set cout = $cdir/$root
 
 #Get partial volume maps
-if ( ! -e ${out}_orig_masked_pve_0.nii.gz || $?force == 1 ) then
+if ( ! -e ${cout}_brain_cut_pve_0.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/fast -g -b -B -o ${cout}_brain_cut ${aout}_brain_cut )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
@@ -484,8 +461,8 @@ endif
 foreach pve ( 0 1 2 )
 	if ( ! -e ${cout}_brain_cut_pve_${pve}_to_asl.nii.gz || $?force == 1 ) then
 		set cmd = ( $FSLDIR/bin/applywarp --in=${cout}_brain_cut_pve_${pve} )
-		set cmd = ( $cmd --ref=${aout}_col_mc_m0_brain --super --superlevel=4 --interp=spline )
-		set cmd = ( $cmd --premat=${aout}_free_to_asl.mat --mask=${pout}_col_mc_m0_brain_mask )
+		set cmd = ( $cmd --ref=${pout}_col_mc_m0_brain --super --superlevel=4 --interp=spline )
+		set cmd = ( $cmd --premat=${aout}_free_to_asl.mat --mask=${aout}_brain_cut_mask_to_asl )
 		set cmd = ( $cmd --out=${cout}_brain_cut_pve_${pve}_to_asl )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
@@ -500,29 +477,29 @@ endif
 
 #Use FSL to extract collated, motion tags and controls
 if ( ! -e ${cout}_tc.nii.gz || $?force == 1 ) then
-	set nvols = `$FSLDIR/bin/fslval ${aout}_col_mc dim4`
+	set nvols = `$FSLDIR/bin/fslval ${pout}_col_mc dim4`
 	set tcvols = `echo "$nvols - 1" | bc`
-	set cmd = ( $FSLDIR/bin/fslroi ${aout}_col_mc ${cout}_tc 1 $tcvols )
+	set cmd = ( $FSLDIR/bin/fslroi ${pout}_col_mc ${cout}_tc 1 $tcvols )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 #Do perfusion subtraction
-if ( ! -e ${cout}_asl_col_mc_perf.nii.gz || $?force == 1 ) then
+if ( ! -e ${cout}_perf.nii.gz || $?force == 1 ) then
 	
 	#Use FSL to split the volume
-	set cmd = ( $FSLDIR/bin/fslsplit ${cout}_tc -t )
+	set cmd = ( $FSLDIR/bin/fslsplit ${cout}_tc ${cout}_vol -t )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 		
 	#Use FSL to get tags
-	set cmd = ( $FSLDIR/bin/fslmerge -t ${cout}_t `$FSLDIR/bin/imglob vol*[02468].*` )
+	set cmd = ( $FSLDIR/bin/fslmerge -t ${cout}_t `$FSLDIR/bin/imglob ${cout}_vol*[02468].*` )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	
 	#Get controls
-	set cmd = ( $FSLDIR/bin/fslmerge -t ${cout}_c `$FSLDIR/bin/imglob vol*[13579].*` )
+	set cmd = ( $FSLDIR/bin/fslmerge -t ${cout}_c `$FSLDIR/bin/imglob ${cout}_vol*[13579].*` )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	
 	#Delete split volumes
-	set cmd = ( rm vol*.nii.gz )
+	set cmd = ( rm ${cout}_vol*.nii.gz )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	
 	if ( $simple == 0 ) then
@@ -543,28 +520,26 @@ endif
 
 #Calculate uncorrected cbf	
 if ( ! -e ${cout}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${cout}_perf.nii.gz )
-	set cmd = ( $cmd ${aout}_col_mc_m0.nii.gz ${pout}_col_mc_m0_brain_mask_ero.nii.gz )
-	set cmd = ( $cmd ${cout} $out4d $unfilt -mthresh $mthresh -sthresh $sthresh -col )
+	set cmd = ( cbf_calc.py ${cout}_perf.nii.gz ${pout}_col_mc_m0.nii.gz )
+	set cmd = ( $cmd ${aout}_brain_cut_mask_to_asl.nii.gz ${cout} $out4d $unfilt )
+	set cmd = ( $cmd -mthresh $mthresh -sthresh $sthresh -col )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
 
 #Run a regression based partial volume correction
 if ( ! -e ${cout}_pvc${kernel}_mgm.nii.gz || $?force == 1 ) then
-	set cmd = ( python ~/Documents/scripts/lin_pv_pasl.py ${cout}_perf.nii.gz )
-	set cmd = ( $cmd ${aout}_col_mc_m0.nii.gz ${pout}_col_mc_m0_brain_mask_ero.nii.gz )
-	set cmd = ( $cmd ${cout}_brain_cut_pve_0_to_asl.nii.gz )
-	set cmd = ( $cmd ${cout}_brain_cut_pve_1_to_asl.nii.gz )
-	set cmd = ( $cmd ${cout}_brain_cut_pve_2_to_asl.nii.gz )
-	set cmd = ( $cmd ${cout}_pvc${kernel}_mgm $nocsf -kernel $kernel )
+	set cmd = ( lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_col_mc_m0.nii.gz )
+	set cmd = ( $cmd ${aout}_brain_cut_mask_to_asl.nii.gz ${cout}_brain_cut_pve_0_to_asl.nii.gz )
+	set cmd = ( $cmd ${cout}_brain_cut_pve_1_to_asl.nii.gz  ${cout}_brain_cut_pve_2_to_asl.nii.gz )
+	set cmd = ( $cmd ${cout}_pvc${kernel} $nocsf -kernel $kernel)
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
 
 #Calculate corrected cbf
 if ( ! -e ${cout}_pvc${kernel}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( python ~/Documents/scripts/cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz )
-	set cmd = ( $cmd ${cout}_pvc${kernel}_mgm.nii.gz ${cout}_col_mc_m0_brain_mask.nii.gz )
-	set cmd = ( $cmd  ${cout}_pvc${kernel} $unfilt -mthresh $mthresh -sthresh $sthresh -col )
+	set cmd = ( cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz ${cout}_pvc${kernel}_mgm.nii.gz )
+	set cmd = ( $cmd ${aout}_brain_cut_mask_to_asl.nii.gz ${cout}_pvc${kernel} )
+	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh -col )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log		
 endif
 
@@ -573,28 +548,37 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 	
 	#Transform cbf to Freesurfer subject volume
 	if ( ! -e ${cbf}_to_free.nii.gz || $?force == 1 ) then
-		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${cout}_brain --out=${cbf}_to_free )
-		set cmd = ( $cmd --premat=${aout}_asl_free.mat --mask=${aout}_brain_cut_mask )
+		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${aout}_brain --out=${cbf}_to_free )
+		set cmd = ( $cmd --premat=${aout}_asl_to_free.mat --mask=${aout}_brain_cut_mask )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log		
 	endif
 	
 	#Get reasonable output mask
-	if (( $cbf == ${cout}_pvc${kernel}_cbf_std || $cbf == ${cout}_cbf_std ) \
+	if (( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
 			&& ( ! -e ${cbf}_outlier_mask.nii.gz || $?force == 1)) then
-		set mean_std = `fslstats ${cbf}_to_free -k ${cout}_gm_mask -m`
-		set outlier_std = `echo "$mean_std * $roithresh" | bc -l`
-		set cmd = ( $FSLDIR/bin/fslmaths ${cbf}_to_free -uthr $outlier_std -bin ${cbf}_outlier_mask )
+		
+		#Use Freesurfer to get a non-zero mask for asl. Erode a little bit to get rid of edges
+		set cmd = ( $FREESURFER_HOME/bin/mri_binarize --i ${cbf}_to_free.nii.gz --match 0 --inv )
+		set cmd = ( $cmd --erode 1 --zero-edges --o ${cbf}_to_free_filt_mask.nii.gz )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+		
+		#Use FSL to get 1st and 99th percentile
+		set min = `$FSLDIR/bin/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -P 1`
+		set max = `$FSLDIR/bin/fslstats${cbf}_to_free -k $${cbf}_to_free_filt_mask -P 99`
+		
+		#Use FreeSurfer to get a outlier mask
+		set cmd = ( $FREESURFER_HOME/bin/mri_binarize --i ${cbf}_to_free.nii.gz --min $min )
+		set cmd = ( $cmd --max $max $cmd --o ${cbf}_outlier_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 										 		
 	#Get stats from Freesurfer segmentations
 	if ( ( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
 			&& ( ! -e ${cbf}_stats.txt || $?force == 1 )) then
-		set mask = `echo $cbf | sed 's/avg/std/g'`
 		set cmd = ( $FREESURFER_HOME/bin/mri_segstats --i ${cbf}_to_free.nii.gz )
 		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt --sum ${cbf}_stats.txt )
-		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subject}/mri/aparc+aseg.mgz )
-		set cmd = ( $cmd --mask ${mask}_outlier_mask.nii.gz )
+		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subj}/mri/aparc+aseg.mgz )
+		set cmd = ( $cmd --mask ${cbf}_outlier_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
 		
@@ -618,6 +602,184 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		endif
 	end
 end
+
+#######################
+###Quality Assurance###
+#######################
+set qdir = $outdir/qa; if ( ! -d $qdir ) mkdir $qdir; set qout = $qdir/${root}
+
+@ count = 1
+while ( $count <= 2 )
+	#Use FSL to create Rotation plot
+	if ( ! -e ${qout}_${count}_rot.png || $?force == 1 ) then	
+		#Create rotation plots
+		set cmd = ( $FSLDIR/bin/fsl_tsplot -i ${pout}_${count}_mcf.par -w 640 -h 144 ) 
+		set cmd = ( $cmd -a x,y,z -u 1 --start=1 --finish=3 -o ${qout}_${count}_rot.png )
+		echo $cmd -t 'Estimated Rotations (radians)' |& tee -a $log
+		$cmd -t 'Estimated Rotations (radians)' |& tee -a $log
+	endif
+		
+	#Use FSL to create translation plots
+	if ( ! -e  ${qout}_${count}_trans.png || $?force == 1 ) then
+		set cmd = ( $FSLDIR/bin/fsl_tsplot -i ${pout}_${count}_mcf.par -u 1 --start=4 )
+		set cmd = ( $cmd --finish=6 -a x,y,z  -w 640 -h 144 -o ${qout}_${count}_trans.png )
+		echo $cmd -t 'Estimated Translations (mm)' |& tee -a $log
+		$cmd -t 'Estimated Translations (mm)' |& tee -a $log
+	endif
+	
+	#Use FSL to create displacement plots
+	if ( ! -e ${pout}_${count}__disp.png || $?force == 1 ) then
+		set cmd = ( $FSLDIR/bin/fsl_tsplot )
+		set cmd = ( $cmd -i ${pout}_${count}_mcf_abs.rms,${pout}_${count}_mcf_rel.rms )
+		set cmd = ( $cmd -u 1 -w 640 -h 144 -o ${qout}_${count}_disp.png -a abs,rel )
+		echo $cmd -t 'Estimated Displacements (mm)'  |& tee -a $log
+		$cmd -t 'Estimated Displacements (mm)' |& tee -a $log
+	endif
+	
+	@ count++
+end
+
+#Setup slicer and png_append options
+set sliceropts = ( -s 2 -x 0.5 ${qout}_sla.png -x 0.45 ${qout}_slb.png -x 0.55 ${qout}_slc.png \
+				   -x 0.65 ${qout}_sld.png -y 0.35 ${qout}_sle.png -y 0.45 ${qout}_slf.png \
+				   -y 0.55 ${qout}_slg.png -y 0.65 ${qout}_slh.png -z 0.35 ${qout}_sli.png \
+				   -z 0.45 ${qout}_slj.png -z 0.55 ${qout}_slk.png -z 0.65 ${qout}_sll.png )
+set appendopts = ( ${qout}_sla.png + ${qout}_slb.png + ${qout}_slc.png + ${qout}_sld.png \
+				   + ${qout}_sle.png + ${qout}_slf.png + ${qout}_slg.png + ${qout}_slh.png \
+				   + ${qout}_sli.png + ${qout}_slj.png + ${qout}_slk.png + ${qout}_sll.png )
+
+#Use FSL to get brain mask QA image
+if ( ! -e ${qout}_asl_brain_mask_qa.png || $?force == 1 ) then
+	#Get non-eroded qa image
+	set cmd = ( $FSLDIR/bin/slicer ${pout}_col_mc_m0 ${aout}_brain_cut_mask_to_asl.nii.gz $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSLDIR/bin/pngappend $appendopts ${qout}_asl_brain_mask_qa.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Cleanup
+	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
+endif
+
+#Use FSL to get ASL->T1 registration qa images
+if ( ! -e ${qout}_asl_to_free_qa.png || $?force == 1 ) then
+	#Get Asl Outlines
+	set cmd = ( $FSLDIR/bin/slicer ${aout}_brain_std ${aout}_asl_to_free_std $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSLDIR/bin/pngappend $appendopts ${qout}_asl_to_free_qa1.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+		
+	#Get T1 outlines
+	set cmd = ( $FSLDIR/bin/slicer ${aout}_asl_to_free_std ${aout}_brain_std $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSLDIR/bin/pngappend $appendopts ${qout}_asl_to_free_qa2.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Combine QA Images
+	set cmd = ( $FSLDIR/bin/pngappend ${qout}_asl_to_free_qa1.png )
+	set cmd = ( $cmd - ${qout}_asl_to_free_qa2.png ${qout}_asl_to_free_qa.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	
+	#Cleanup
+	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
+endif
+
+#Use FSL to get free to MNI 152 space QA
+if ( ! -e ${qout}_free_to_MNI152_qa.png || $?force == 1 ) then
+	#Use FSL to get free to MNI152 QA (MNI Outlines)
+	set cmd = ( $FSLDIR/bin/slicer ${aout}_free_warped_to_MNI152 )
+	set cmd = ( $cmd ${FSLDIR}/data/standard/MNI152_T1_2mm_brain $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSLDIR/bin/pngappend $appendopts ${qout}_free_to_MNI152_qa1.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Use FSL to get free to MNI 152 QA (free standard outlines)
+	set cmd = ( $FSLDIR/bin/slicer ${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
+	set cmd = ( $cmd ${aout}_free_warped_to_MNI152 $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSLDIR/bin/pngappend $appendopts ${qout}_free_to_MNI152_qa2.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Combine QA Images
+	set cmd = ( $FSLDIR/bin/pngappend ${qout}_free_to_MNI152_qa1.png )
+	set cmd = ( $cmd - ${qout}_free_to_MNI152_qa2.png ${qout}_free_to_MNI152_qa.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	
+	#Cleanup
+	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
+endif
+
+#Use FSL to get ASL to MNI 152 space QA
+if ( ! -e ${qout}_asl_to_MNI152_qa.png || $?force == 1 ) then
+	#Use FSL to get free to MNI152 QA (MNI Outlines)
+	set cmd = ( $FSLDIR/bin/slicer ${aout}_asl_warped_to_MNI152 )
+	set cmd = ( $cmd ${FSLDIR}/data/standard/MNI152_T1_2mm_brain $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSLDIR/bin/pngappend $appendopts ${qout}_asl_to_MNI152_qa1.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Use FSL to get free to MNI 152 QA (free standard outlines)
+	set cmd = ( $FSLDIR/bin/slicer ${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
+	set cmd = ( $cmd ${aout}_asl_warped_to_MNI152 $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSLDIR/bin/pngappend $appendopts ${qout}_asl_to_MNI152_qa2.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Combine QA Images
+	set cmd = ( $FSLDIR/bin/pngappend ${qout}_asl_to_MNI152_qa1.png )
+	set cmd = ( $cmd - ${qout}_asl_to_MNI152_qa2.png ${qout}_asl_to_MNI152_qa.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Cleanup
+	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
+endif
+
+################
+###QA Webpage###
+################
+
+#Put Everything in a QA webpage
+if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
+	echo "Creating QA webpage at: `pwd`/${qout}_asl_qa_index.html" |& tee -a $log
+	#Create webpages
+	set web_list = ( ${qout}_asl_qa_mc.html ${qout}_asl_qa_bmsk.html \
+		  			 ${qout}_asl_qa_reg.html ${qout}_asl_qa_index.html )
+	touch $web_list
+	
+	#Setup header
+	echo '<html><body bgcolor="gray">' | tee $web_list > /dev/null
+	echo "<center><h1>${program}: ${subj} Quick QA</center></h1>" | tee -a $web_list > /dev/null
+	echo "<center><a href=${root}_asl_qa_mc.html>Motion_Correction</a href> - \
+		  <a href=${root}_asl_qa_bmsk.html>Brain Masking</a href> - \
+		  <a href=${root}_asl_qa_reg.html>Registration</a ref></center> " | tee -a $web_list > /dev/null
+	
+	#Setup Motion Correction
+	echo "<hr><h2>Motion Correction</h2>" >> ${qout}_asl_qa_mc.html
+	set run1_rel = `cat ${pout}_1_mcf_rel_mean.rms`; set run1_abs = `cat ${pout}_1_mcf_abs_mean.rms`
+	set run2_rel = `cat ${pout}_2_mcf_rel_mean.rms`; set run2_abs = `cat ${pout}_2_mcf_abs_mean.rms`
+	echo "Run1: MCFLIRT Estimated Displacements(mm): Absolute=$run1_abs Relative=$run1_rel" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${qout}_1_rot.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${qout}_1_trans.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${qout}_1_disp.png>" >> ${qout}_asl_qa_mc.html
+	echo "Run2: MCFLIRT Estimated Displacements(mm): Absolute=$run2_abs Relative=$run2_rel" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${qout}_2_rot.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${qout}_2_trans.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${qout}_2_disp.png>" >> ${qout}_asl_qa_mc.html
+	
+	
+	#Setup Brain Masking
+	echo "<hr><h2>ASL Brain Masking</h2>" >> ${qout}_asl_qa_bmsk.html
+	echo "Mask was generated through registration with FreeSurfer." >> ${qout}_asl_qa_bmsk.html
+	echo "<p><IMG BORDER=0 SRC=${root}_asl_brain_mask_qa.png>" >> ${qout}_asl_qa_bmsk.html
+		 
+	#Setup Registration
+	echo "<hr><h2>Registration</h2>" >> ${qout}_asl_qa_reg.html
+	echo "ASL to FreeSurfer T1" >> ${qout}_asl_qa_reg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_asl_to_free_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
+	echo "<p>Nonlinear Registration of Freesurfer T1 to MNI152 T1 2MM" >> ${qout}_asl_qa_reg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_free_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
+	echo "<p>Nonlinear Registration of ASL to MNI152 T1 2MM" >> ${qout}_asl_qa_reg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_asl_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
+endif
 
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
