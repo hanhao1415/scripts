@@ -29,18 +29,18 @@ if ( $#argv == 0 ) then
 	echo "	-root: <root>		Root for outputed files. Default is FreeSurfer Subject ID."
 	echo "	-outdir: <outdir>	Output directory. Default is <root>."
 	echo '	-subjdir: <dir>		Set FreeSurfer subjects directory. Default is current $SUBJECTS_DIR.'
-	echo "	-simple:		Do simple subtraction. Default is sinc."
-	echo "	-unfilt: 		Output CBF data with and without outlier removal."
 	echo "	-mthresh: <thresh>	Threshold for mean perfusion outliers. Default is 2.5."
 	echo "	-sthresh: <thresh>	Threshold for standard deviation perfusion outliers. Default is 1.5"
-	echo "	-kernel: <kernel>	Size of regression kernel for partial volume correction. Default is 5.0."
-	echo "	-nocsf: 		Assume that there is no perfusion in CSF for partial volume correction."
-	echo "	-out4d:			Output a 4d cbf image."
-	echo "	-fwhm: <fwhm>		FWHM for surface smoothing. Default is 5."
-	echo "	-bthresh <thresh>	Threshold for BET masking. Default is 0.1."
-	echo "	-force: 		Run command even if output exists."
-	echo "	-gthresh: <thresh>	Threshold for gray matter mask. Default is .3"
+	echo "	-bthresh <thresh>	Threshold for BET masking. Default is 0.4."
 	echo "	-roithresh: <thresh>	Threshold for ROI sampling. Default is 1.5"
+	echo "	-gthresh: <thresh>	Threshold for gray matter mask. Default is .3"
+	echo "	-kernel: <kernel>	Size of regression kernel for partial volume correction. Default is 5.0."
+	echo "	-fwhm: <fwhm>		FWHM for surface smoothing. Default is 5."	
+	echo "	-simple:		Do simple subtraction. Default is sinc."
+	echo "	-unfilt: 		Output CBF data with and without outlier removal."
+	echo "	-nocsf: 		Assume that there is no perfusion in CSF for partial volume correction."
+	echo "	-out4d:			Output a 4d cbf image."	
+	echo "	-force: 		Run command even if output exists."
 	echo "	-debug			Turn on set echo."
 	echo ""
 	echo "Note: Script requires FSL, FreeSurfer, Numpy, and Nibabel"
@@ -48,8 +48,8 @@ if ( $#argv == 0 ) then
 endif
 
 #Set defaults
-set mthresh = 2.5; set fwhm = 5; set simple = 0; set avgperf = 0; set out4d = ""; set unfilt = "";
-set kernel = 5; set nocsf = ""; set gthresh = 0.3; set sthresh = 1.5; set roithresh = 1.5;
+set mthresh = 2.5; set fwhm = 5; set out4d = ""; set unfilt = "";
+set kernel = 5; set nocsf = ""; set gthresh = 0.3; set sthresh = 1.5; set roithresh = 1.5; set bthresh = 0.4
 
 #Parse arguments
 set args = ( $argv )
@@ -68,38 +68,37 @@ while ( $#argv > 0 )
 			set root = $argv[1]; shift; breaksw;
 		case -outdir:
 			set outdir = $argv[1]; shift; breaksw;
-		case -mthresh:
-			set mthresh = $argv[1]; shift; breaksw;
-		case -sthresh:
-			set sthresh = $argv[1]; shift; breaksw;
-		case -bthresh:
-			set bthresh: = $argv[1]; shift; breaksw;
-		case -fwhm:
-			set fwhm = $argv[1]; shift; breaksw;
-		case -simple:
-			set simple = 1; breaksw;
-		case -out4d:
-			set out4d = "-out4d"; breaksw;
-		case -unfilt:
-			set unfilt = "-unfilt"; breaksw;
-		case -kernel:
-				set kernel = $argv[1]; shift; breaksw;
-			endif
-		case -nocsf:
-			set nocsf = "-nocsf"; breaksw;
 		case -subjdir:
 			if ( ! -d $argv[1] ) then
 				echo "Cannot find directory $argv[1]."
 				exit 1
 			else
 				setenv SUBJECTS_DIR $argv[1]; shift; breaksw;
-			endif
-		case -force:
-			set force = 1; breaksw;
-		case -gthresh:
-			set gthresh = $argv[1]; shift; breaksw;
+			endif	
+		case -mthresh:
+			set mthresh = $argv[1]; shift; breaksw;
+		case -sthresh:
+			set sthresh = $argv[1]; shift; breaksw;
+		case -bthresh:
+			set bthresh: = $argv[1]; shift; breaksw;
 		case -roithresh:
 			set roithresh = $argv[1]; shift; breaksw;
+		case -gthresh:
+			set gthresh = $argv[1]; shift; breaksw;
+		case -fwhm:
+			set fwhm = $argv[1]; shift; breaksw;
+		case -kernel:
+				set kernel = $argv[1]; shift; breaksw;
+		case -simple:
+			set simple = 1; breaksw;
+		case -out4d:
+			set out4d = "-out4d"; breaksw;
+		case -unfilt:
+			set unfilt = "-unfilt"; breaksw;
+		case -nocsf:
+			set nocsf = "-nocsf"; breaksw;
+		case -force:
+			set force = 1; breaksw;
 		case -debug:
 			set debug = 1; breaksw;
 		default:
@@ -122,7 +121,7 @@ if ( ! -e $SUBJECTS_DIR/$subj ) then
 endif
 
 #Make sure there is an fsaverage in the SUBJECTS_DIR
-if ( ! -e $SUBJECTS_DIR/fsaverage ) then
+if ( ! -d $SUBJECTS_DIR/fsaverage ) then
 	ln -s $FREESURFER_HOME/subjects/fsaverage $SUBJECTS_DIR/fsaverage
 endif
 
@@ -180,7 +179,7 @@ endif
 
 #Use python to collate the two runs
 if ( ! -e ${pout}_col.nii.gz || $?force == 1 ) then
-	set cmd = ( python ~/Documents/scripts/collate.py ${pout}_1.nii.gz ${pout}_2.nii.gz ${pout}_col )
+	set cmd = ( collate.py ${pout}_1.nii.gz ${pout}_2.nii.gz ${pout}_col )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -215,7 +214,7 @@ endif
 
 #Use python to split the resliced tse like the original asl runs
 if ( ! -e ${tout}_1.nii.gz || ! -e ${tout}_2.nii.gz || $?force == 1 ) then	
-	set cmd = ( python ~/Documents/scripts/split.py ${tout}_to_asl_col_m0.nii.gz ${tout} )
+	set cmd = ( split.py ${tout}_to_asl_col_m0.nii.gz ${tout} )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -250,7 +249,7 @@ while ( $count <= 2 )
 		
 		#Use FSL to apply between and within run motion correction in one step
 		foreach vol ( ${pout}_vol*.nii.gz )
-			set num = `echo $vol | sed 's/vol//g' | sed 's/.nii.gz//g'`
+			set num = `echo $vol:t | sed "s/${root}_asl_vol//g" | sed 's/.nii.gz//g'`
 			set cmd = ( $FSLDIR/bin/applywarp -i $vol -o ${vol:r:r}_transformed -r $vol )
 			set cmd = ( $cmd --premat=${pout}_${count}_mcf.mat/MAT_${num} )
 			set cmd = ( $cmd --postmat=${pout}_${count}_m0_to_tse_${count}.mat --interp=spline )
@@ -271,7 +270,7 @@ end
 
 #Use Python to collate the motion corrected images
 if ( ! -e ${pout}_col_mc.nii.gz || $?force == 1 ) then
-	set cmd = ( python ~/Documents/scripts/collate.py ${pout}_1_mc.nii.gz )
+	set cmd = ( collate.py ${pout}_1_mc.nii.gz )
 	set cmd = ( $cmd ${pout}_2_mc.nii.gz ${pout}_col_mc )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
@@ -284,7 +283,7 @@ endif
 
 #Use FSL to get a ASL brain mask
 if ( ! -e ${pout}_col_mc_m0_brain_mask.nii.gz || $?force == 1 ) then 
-	set cmd = ( $FSLDIR/bin/bet ${pout}_col_mc_m0 ${pout}_col_mc_m0_brain -R -f $bthresh -m -n )
+	set cmd = ( $FSLDIR/bin/bet ${pout}_col_mc_m0 ${pout}_col_mc_m0_brain -R -f $bthresh -m )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -325,7 +324,7 @@ endif
 
 #Use FSL to get a mask
 if ( ! -e ${aout}_brain_cut_mask.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fslmaths ${aout}_brain_cut -bin ${aout}_brain_cut_mask )
+	set cmd = ( $FSLDIR/bin/fslmaths ${aout}_brain_cut -bin ${aout}_brain_cut_mask -odt float )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -343,11 +342,16 @@ if ( ! -e ${aout}_free_to_asl.mat || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
-#Use FSL to resample FreeSurfer brainmask to ASL space
-if ( ! -e ${aout}_brain_cut_mask_to_asl.nii.gz || $?force == 1 ) then
+#Get a brainmask in asl space
+if ( ! -e ${aout}_brain_cut_mask_to_asl.nii.gz || $?force == 1 ) then	
+	#Resample brainmask to asl
 	set cmd = ( $FSLDIR/bin/applywarp -i ${aout}_brain_cut_mask -r ${pout}_col_mc_m0_brain )
 	set cmd = ( $cmd --premat=${aout}_free_to_asl.mat -o ${aout}_brain_cut_mask_to_asl )
 	set cmd = ( $cmd -m ${pout}_col_mc_m0_brain_mask )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Rebinarize mask
+	set cmd = ( $FSLDIR/bin/fslmaths ${aout}_brain_cut_mask_to_asl -thr 0.5 ${aout}_brain_cut_mask_to_asl )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -393,8 +397,8 @@ endif
 #Use FSL to do a nonlinear registration between T1 and MNI152
 if ( ! -e ${aout}_free_to_MNI152_coef.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/fnirt --in=${aout}_T1 --aff=${aout}_free_to_MNI152.mat )
-	set cmd = ( $cmd --config=T1_2_MNI152_2mm.cnf --jacrange=0_1,10 --verbose )
-	set cmd = ( $cmd --cout=${aout}_free_to_MNI152_coef --jout=${aout}_free_to_MNI152_jac )
+	set cmd = ( $cmd --config=T1_2_MNI152_2mm.cnf --cout=${aout}_free_to_MNI152_coef --verbose )
+	set cmd = ( $cmd --jout=${aout}_free_to_MNI152_jac )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -453,7 +457,7 @@ set cdir = $outdir/cbf; if ( ! -d $cdir ) mkdir $cdir; set cout = $cdir/$root
 
 #Get partial volume maps
 if ( ! -e ${cout}_brain_cut_pve_0.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fast -g -b -B -o ${cout}_brain_cut ${aout}_brain_cut )
+	set cmd = ( $FSLDIR/bin/fast -g -b -B -p -o ${cout}_brain_cut ${aout}_brain_cut )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
 
@@ -502,7 +506,7 @@ if ( ! -e ${cout}_perf.nii.gz || $?force == 1 ) then
 	set cmd = ( rm ${cout}_vol*.nii.gz )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	
-	if ( $simple == 0 ) then
+	if ( $?simple == 0 ) then
 		#Do sinc subtraction by shifting the tags forward
 		set cmd = ( $FSLDIR/bin/slicetimer -i ${cout}_t -o ${cout}_t_sinc --tglobal=1.0 )				   			   
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
@@ -512,7 +516,7 @@ if ( ! -e ${cout}_perf.nii.gz || $?force == 1 ) then
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	else
 		#Simple subtraction only
-		set cmd = ( $FSLDIR/bin/fslmaths ${cout}_c -sub ${cout}_t ${cout}_perf )
+		set cmd = ( $FSLDIR/bin/fslmaths ${cout}_c -sub ${cout}_t ${cout}_perf -odt float )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
 	
@@ -551,6 +555,15 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf --ref=${aout}_brain --out=${cbf}_to_free )
 		set cmd = ( $cmd --premat=${aout}_asl_to_free.mat --mask=${aout}_brain_cut_mask )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log		
+	endif
+	
+	#Transform to MNI152 2mm space
+	if ( ! -e ${cbf}_warped_to_MNI152_2mm.nii.gz || $?force == 1 ) then
+		set cmd = ( $FSLDIR/bin/applywarp --in=$cbf  )
+		set cmd = ( $cmd --ref=${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
+		set cmd = ( $cmd --warp=${aout}_asl_to_MNI152_coef --out=${cbf}_warped_to_MNI152_2mm )
+		set cmd = ( $cmd --mask=${FSLDIR}/data/standard/MNI152_T1_2mm_brain_mask )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 	
 	#Get reasonable output mask
@@ -592,7 +605,7 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		#Transform to fsaverage space
 		if ( ! -e ${cbf}_to_${hemi}_fsaverage.nii.gz || $?force == 1 ) then
 			set cmd = ( $FREESURFER_HOME/bin/mri_vol2surf --mov ${cbf}.nii.gz --cortex )
-			set cmd = ( $cmd --trgsubject fsaverage --hemi $hemi --interp trilinear )
+			set cmd = ( $cmd --trgsubject fsaverage --hemi $hemi --interp trilinear --projfrac 0.5 )
 			set cmd = ( $cmd --reg ${aout}_asl_to_free.reg --o ${cbf}_to_${hemi}_fsaverage.nii.gz )
 			echo $cmd |& tee -a $log; $cmd |& tee -a $log		
 		endif
@@ -601,7 +614,7 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		if ( ! -e ${cbf}_to_${hemi}_fsaverage_fwhm_${fwhm}.nii.gz || $?force == 1 ) then
 			set cmd = ( $FREESURFER_HOME/bin/mri_vol2surf --mov ${cbf}.nii.gz --cortex )
 			set cmd = ( $cmd --trgsubject fsaverage --hemi $hemi --surf-fwhm ${fwhm} )
-			set cmd = ( $cmd --reg ${aout}_asl_to_free.reg --interp trilinear )
+			set cmd = ( $cmd --reg ${aout}_asl_to_free.reg --interp trilinear --projfrac 0.5 )
 			set cmd = ( $cmd --o ${cbf}_to_${hemi}_fsaverage_fwhm_${fwhm}.nii.gz )
 			echo $cmd |& tee -a $log; $cmd |& tee -a $log														 
 		endif

@@ -1,4 +1,4 @@
-#!/bin/python
+#!/Library/Frameworks/Python.framework/Versions/Current/bin/python
 # Tyler Blazey, Summer 2011
 
 #import system modules
