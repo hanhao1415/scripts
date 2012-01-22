@@ -35,7 +35,7 @@ if ( $#argv == 0 ) then
 	echo "	-roithresh: <thresh>	Threshold for ROI sampling. Default is 1.5"
 	echo "	-gthresh: <thresh>	Threshold for gray matter mask. Default is .3"
 	echo "	-kernel: <kernel>	Size of regression kernel for partial volume correction. Default is 5.0."
-	echo "	-fwhm: <fwhm>		FWHM for surface smoothing. Default is 5."	
+	echo "	-fwhm: <fwhm>		FWHM for atlas smoothing. Default is 5."	
 	echo "	-simple:		Do simple subtraction. Default is sinc."
 	echo "	-unfilt: 		Output CBF data with and without outlier removal."
 	echo "	-nocsf: 		Assume that there is no perfusion in CSF for partial volume correction."
@@ -352,7 +352,7 @@ if ( ! -e ${aout}_brain_cut_mask_to_asl.nii.gz || $?force == 1 ) then
 	
 	#Rebinarize mask
 	set cmd = ( $FSLDIR/bin/fslmaths ${aout}_brain_cut_mask_to_asl )
-	set cmd = ( $ cmd -thr 0.5 -bin ${aout}_brain_cut_mask_to_asl )
+	set cmd = ( $cmd -thr 0.5 -bin ${aout}_brain_cut_mask_to_asl )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -564,6 +564,14 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		set cmd = ( $cmd --ref=${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
 		set cmd = ( $cmd --warp=${aout}_asl_to_MNI152_coef --out=${cbf}_warped_to_MNI152_2mm )
 		set cmd = ( $cmd --mask=${FSLDIR}/data/standard/MNI152_T1_2mm_brain_mask )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	endif
+	
+	#Smooth MNI152 2mm image by specifeid amount
+	if ( ! -e ${cbf}_warped_to_MNI152_2mm_fwhm_${fwhm}.nii.gz || $?force == 1 ) then
+		set cmd = ( $FREESURFER_HOME/bin/mri_fwhm --i ${cbf}_warped_to_MNI152_2mm.nii.gz )
+		set cmd = ( $cmd --mask ${FSLDIR}/data/standard/MNI152_T1_2mm_brain_mask.nii.gz --fwhm $fwhm )
+		set cmd = ( $cmd --o ${cbf}_warped_to_MNI152_2mm_fwhm_${fwhm}.nii.gz --smooth-only )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 	
