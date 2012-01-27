@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/Library/Frameworks/Python.framework/Versions/Current/bin/python
 
 #Import system modules
 import sys, argparse
@@ -14,6 +14,7 @@ arg_parse.add_argument('mcf',help='Realigned image. Most likely the output of mc
 arg_parse.add_argument('par',help='Motion parameters estimated from mcflirt.',nargs=1)
 arg_parse.add_argument('outroot',help='Root for outputed files',nargs=1)
 #Optional arguments
+arg_parse.add_argument('-mask',help='Masked used for calculating mean intensity.',nargs=1,default=[0])
 arg_parse.add_argument('-rel',help='Output tracjectory relative to run mean. Same as mat2dat -R option',action='store_const',default=[0],const=[1])
 arg_parse.add_argument('-dis',help='Save differentiated trajectory. Same as mat2dat -D option.',action='store_const',default=[0],const=[1])
 arg_parse.add_argument('-skip',help='Number of frames to skip. Default is 3. Same as mat2dat -n option.',type=int,default=[3],nargs=1)
@@ -96,11 +97,17 @@ except (IOError):
 	print 'Error: Cannot load motion parameters at %s'%(args.par[0])
 	sys.exit()
 
+#Setup masking
+if args.mask[0] == 0:
+	#Get rid of zeros
+else
+	#Load in mask
+
 #Check inputs
 if args.skip[0] >= aligned_data.shape[3]:
 	print 'Error: Skip number cannot exceed or equal frame count.'
 	sys.exit()
-if raw.get_shape() != aligned.get_shape():
+if raw.get_shape() != aligned.get_shape(): #add mask here
 	print 'Error: Mismatch in image dimensions. Check data.'
 	sys.exit()
 if raw.get_shape()[3] != dims[0]:
@@ -131,8 +138,8 @@ dat_masked = np.ma.array(dat,mask=params_mask)
 #Mask input images
 #Write out a .dat type file
 file = open(args.outroot[0] + '.dat','w')
-file.write('%6s  %s\n'%('#',' '.join(sys.argv)))
-file.write('%6s %-7s %7s %8s %9s %8s %8s %8s'%('#',' X(mm)','Y(mm)','Z(mm)','X(deg)','Y(deg)','Z(deg)','Scale\n'))
+file.write('%s  %s\n'%('#',' '.join(sys.argv)))
+file.write('%-6s %-8s %7s %8s %8s %8s %8s %8s'%('#frame',' dX(mm)','dY(mm)','dZ(mm)','X(deg)','Y(deg)','Z(deg)','Scale\n'))
 np.savetxt(file,dat_masked,fmt=['%6i','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f'])
 param_sum(file,dat_masked); file.close()
 if args.plot[0] == 1: param_graph('dat',dat[:,1:7])
@@ -145,8 +152,8 @@ if args.dis[0] == 1:
 	ddat = np.concatenate((frames,diff),axis=1)
 	ddat_masked = np.ma.array(ddat,mask=params_mask)
 	file = open(args.outroot[0] + '.ddat','w'); 
-	file.write('%6s  %s\n'%('#',' '.join(sys.argv)))
-	file.write('%6s %-8s %7s %8s %9s %8s %8s %9s'%('#',' dX(mm)','dY(mm)','dZ(mm)','dX(deg)','dY(deg)','dZ(deg)',' 100*Scale\n'))
+	file.write('%s %s\n'%('#',' '.join(sys.argv)))
+	file.write('%6s %-9s %7s %8s %9s %8s %8s %9s'%('#Frame',' ddX(mm)','ddY(mm)','ddZ(mm)','dX(deg)','dY(deg)','dZ(deg)',' 100*Scale\n'))
 	np.savetxt(file,ddat,fmt=['%6i','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f'])
 	param_sum(file,ddat_masked); file.close()
 	if args.plot[0] == 1: param_graph('ddat',ddat[:,1:7])
@@ -161,8 +168,8 @@ if args.rel[0] == 1:
 	rdat = np.concatenate((frames,param_rel,scale_rel),axis=1)
 	rdat_masked = np.ma.array(rdat,mask=params_mask)
 	file = open(args.outroot[0] + '.rdat','w');
-	file.write('%6s  %s\n'%('#',' '.join(sys.argv)))
-	file.write('%6s %-7s %7s %8s %9s %8s %8s %8s'%('#',' X(mm)','Y(mm)','Z(mm)','X(deg)','Y(deg)','Z(deg)','Scale\n'))
+	file.write('%s  %s\n'%('#',' '.join(sys.argv)))
+	file.write('%-6s %-8s %7s %8s %8s %8s %8s %8s'%('#frame',' dX(mm)','dY(mm)','dZ(mm)','X(deg)','Y(deg)','Z(deg)','Scale\n'))
 	np.savetxt(file,rdat,fmt=['%6i','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f'])
 	param_sum(file,rdat_masked); file.close()
 	if args.plot[0] == 1: param_graph('rdat',rdat[:,1:7])
