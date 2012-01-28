@@ -156,7 +156,7 @@ dat_masked = np.ma.array(dat,mask=params_mask)
 file = open(args.outroot[0] + '.dat','w')
 file.write('#%s\n'%(' '.join(sys.argv)))
 file.write('%-6s %-8s %7s %8s %8s %8s %8s %8s'%('#frame',' dX(mm)','dY(mm)','dZ(mm)','X(deg)','Y(deg)','Z(deg)','Scale\n'))
-np.savetxt(file,dat_masked,fmt=['%6i','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f'])
+np.savetxt(file,dat,fmt=['%6i','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f','% .5f'])
 param_sum(file,dat_masked); file.close()
 if args.plot[0] == 1: param_graph('dat',dat[:,1:7])
 
