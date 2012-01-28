@@ -30,12 +30,12 @@ def param_sum(filename,params):
 	mean = np.ma.mean(params,axis=0)
 	stdev = np.ma.std(params,axis=0,ddof=1)
 	#Get rotational and translational rms
-	trans_sum = np.ma.sum(np.ma.power(stdev[1:4],2))
-	trans_rms = np.ma.sqrt(trans_sum)
-	rot_rms = np.ma.sqrt(np.ma.sum(np.ma.power(stdev[4:7],2)))
+	trans_sum = np.sum(np.power(stdev[1:4],2))
+	trans_rms = np.sqrt(trans_sum)
+	rot_rms = np.sqrt(np.sum(np.power(stdev[4:7],2)))
 	#Get total rms
-	rot_rad_sum = np.sum(np.ma.power(np.ma.std(params[:,4:7]*(np.arctan(1)/45),axis=0,ddof=1),2))
-	total_rms = np.ma.sqrt(trans_sum+(np.ma.power(args.rad[0],2)*rot_rad_sum))
+	rot_rad_sum = np.sum(np.power(np.ma.std(params[:,4:7]*(np.arctan(1)/45),axis=0,ddof=1),2))
+	total_rms = np.sqrt(trans_sum+(np.power(args.rad[0],2)*rot_rad_sum))
 	
 	#Write out results 
 	file.write('#Counting %i out of %i frames\n'%(params.shape[0]-args.skip[0],params.shape[0]))
