@@ -19,7 +19,7 @@ arg_parse.add_argument('-rel',help='Output tracjectory relative to run mean. Sam
 arg_parse.add_argument('-diff',help='Save differentiated trajectory. Same as mat2dat -D option.',action='store_const',default=[0],const=[1])
 arg_parse.add_argument('-skip',help='Number of frames to skip. Default is 3. Same as mat2dat -n option.',type=int,default=[3],nargs=1)
 arg_parse.add_argument('-rad',help='Radius used to calculated total rms. Default is 50.',type=float,default=[50.0],nargs=1)
-arg_parse.add_argument('-ref',help='Reference frame for scale calculation. Default is 1.',type=int,default=[1],nargs=1)
+arg_parse.add_argument('-ref',help='Reference frame for scale calculation. Default is 4.',type=int,default=[4],nargs=1)
 arg_parse.add_argument('-plot',help='Output motion plots',action='store_const',default=[0],const=[1])
 args = arg_parse.parse_args()
 
