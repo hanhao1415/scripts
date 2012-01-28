@@ -161,8 +161,9 @@ param_sum(file,dat_masked); file.close()
 if args.plot[0] == 1: param_graph('dat',dat[:,1:7])
 
 if args.diff[0] == 1:
-	#Calculate framewise differences. Add back in first frame. Multiple scale by 100.
-	diff = np.diff(dat[:,1:8],axis=0); diff = np.insert(diff,0,0.0,axis=0); diff[:,6] = diff[:,6] * 100.0
+	#Calculate framewise differences. Add back in first frame. Multiple scale by 100 and divide by mean.
+	diff = np.diff(dat[:,1:8],axis=0); diff = np.insert(diff,0,0.0,axis=0); 
+	diff[:,6] = diff[:,6] * 100.0 / np.ma.mean(dat_masked[:,7])
 	
 	#Writeout .ddat file
 	ddat = np.concatenate((frames,diff),axis=1)
