@@ -2,7 +2,7 @@
 #Tyler Blazey, 2011.
 
 if ( $?FSLDIR == 0 ) then
-	echo "FSLDIR environment variable needs to be set before running scripts."
+	echo "Error: FSLDIR environment variable needs to be set."
 	exit 1
 else
 	set FSL = "$FSLDIR/bin"

@@ -2,7 +2,7 @@
 #Tyler Blazey, 2011.
 
 if ( $?FSLDIR == 0 ) then
-	echo "FSLDIR environment variable needs to be set before running scripts."
+	echo "Error: FSLDIR environment variable needs to be set."
 	exit 1
 else
 	set FSL = "$FSLDIR/bin"
@@ -29,7 +29,7 @@ if ($#argv == 0) then
 	echo ""
 	echo "Optional Arguments:" 
 	echo "	-magmask: Specify magnitude mask image instead of estimating."
-	echo "	-meanmap: Turns off conversion to radians and phase unwrapping."
+	echo "	-meanmap: Turns off conversion to radians/sec and phase unwrapping."
 	echo "	-reg: Field map regulation. Takes despike, smooth, median, or none. Default is despike."
 	echo "	-frame:	EPI frame to extract for registration. Default is 0."
 	echo "	-o: Outpath. Default is unwarp"
@@ -62,30 +62,26 @@ while ($#argv > 0)
 	set flag = $argv[1]; shift;
 	switch ($flag)
 		case -m:
-			set imcheck = `$FSL/imtest $argv[1]`
-			if ( $imcheck == 0 ) then
-				echo "Cannot find magnitude image at $argv[1]."
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find magnitude image at $argv[1]."
 				exit 1
 			endif
 			set mag = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
-		case -e:
-			set imcheck = `$FSL/imtest $argv[1]`
-			if ( $imcheck == 0 ) then
-				echo "Cannot find epi image at $argv[1]."
+		case -e: 
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find epi image at $argv[1]."
 				exit 1
 			endif
 			set epi = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -p:
-			set imcheck = `$FSL/imtest $argv[1]`
-			if ( $imcheck == 0 ) then
-				echo "Cannot find phase image at $argv[1]."
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find phase image at $argv[1]."
 				exit 1
 			endif
 			set phase = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
-		case -magmask:
-			set imcheck = `$FSL/imtest $argv[1]`
-			if ( $imcheck == 0 ) then
-				echo "Cannot find magnitude mask image at $argv[1]."
+		case -magmask: 
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find magnitude mask image at $argv[1]."
 				exit 1
 			endif
 			set magmask = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
@@ -177,6 +173,14 @@ set out = $outpath/$outroot; set pout = ${outpath}/${outroot}phase
 #Copy images over
 $FSL/imcp $mag ${out}mag; $FSL/imcp $epi ${out}epi; $FSL/imcp $phase $pout
 
+#Create brain mask for magnitude
+if ( $?magmask == 0 ) then
+	$FSL/bet ${out}mag ${out}mag_brain -f 0.3 -m -R
+else
+	$FSL/imcp $magmask ${out}mag_brain_mask
+	$FSL/fslmaths ${out}mag -mas ${out}mag_brain_mask ${out}mag_brain
+endif
+
 if ( $?meanmap == 0 ) then 
 	#Convert field map to radians
 	set range = `fslstats ${pout} -R`.
@@ -191,25 +195,17 @@ if ( $?meanmap == 0 ) then
 		exit 1
 	endif
 	set pout = ${pout}_rad
-endif
-
-#Create brain mask for magnitude
-if ( $?magmask == 0 ) then
-	$FSL/bet ${out}mag ${out}mag_brain -f 0.3 -m -R
-else
-	$FSL/imcp $magmask ${out}mag_brain_mask
-	$FSL/fslmaths ${out}mag -mas ${out}mag_brain_mask ${out}mag_brain
-endif
 	
-#If user wants, unwrap phase with prelude.
-if ( $?unwrap == 0 && $?meanmap == 0  ) then
-	$FSL/prelude -p ${pout} -a ${out}mag -o ${pout}_unwrap
-	set pout = ${pout}_unwrap
+	#If user wants, unwrap phase with prelude.
+	if ( $?unwrap == 0 ) then
+		$FSL/prelude -p ${pout} -a ${out}mag -o ${pout}_unwrap
+		set pout = ${pout}_unwrap
+	endif
+	
+	#Convert to radians/sec
+	$FSL/fslmaths ${pout} -div $delta ${pout}_secs
+	set pout = ${pout}_secs
 endif
-
-#Convert to radians/second
-$FSL/fslmaths ${pout} -div $delta ${pout}_secs
-set pout = ${pout}_secs
 
 ###############
 #Brain Masking#
