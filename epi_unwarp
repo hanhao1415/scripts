@@ -1,4 +1,5 @@
 #!/bin/tcsh -f
+#Processing steps adapted from FSL's featlib.tcl 
 #Tyler Blazey, 2011.
 
 if ( $?FSLDIR == 0 ) then
@@ -28,6 +29,8 @@ if ($#argv == 0) then
 	echo "	-delta: Difference between field map echo times. In milleseconds."
 	echo ""
 	echo "Optional Arguments:" 
+	echo "	-magmask: Specify magnitude mask image instead of estimating."
+	echo "	-meanmap: Turns off conversion to radians/sec and phase unwrapping."
 	echo "	-reg: Field map regulation. Takes despike, smooth, median, or none. Default is despike."
 	echo "	-frame:	EPI frame to extract for registration. Default is 0."
 	echo "	-o: Outpath. Default is unwarp"
@@ -60,26 +63,31 @@ while ($#argv > 0)
 	set flag = $argv[1]; shift;
 	switch ($flag)
 		case -m:
-			set imcheck = `$FSL/imtest $argv[1]`
-			if ( $imcheck == 0 ) then
-				echo "Cannot find magnitude image at $argv[1]."
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find magnitude image at $argv[1]."
 				exit 1
 			endif
 			set mag = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
-		case -e:
-			set imcheck = `$FSL/imtest $argv[1]`
-			if ( $imcheck == 0 ) then
-				echo "Cannot find epi image at $argv[1]."
+		case -e: 
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find epi image at $argv[1]."
 				exit 1
 			endif
 			set epi = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
 		case -p:
-			set imcheck = `$FSL/imtest $argv[1]`
-			if ( $imcheck == 0 ) then
-				echo "Cannot find phase image at $argv[1]."
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find phase image at $argv[1]."
 				exit 1
 			endif
 			set phase = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
+		case -magmask: 
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find magnitude mask image at $argv[1]."
+				exit 1
+			endif
+			set magmask = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
+		case -meanmap:
+			set meanmap = 1; breaksw;
 		case -o:
 			set outpath = $argv[1]; shift; breaksw;
 		case -r:
@@ -103,13 +111,13 @@ while ($#argv > 0)
 		case -dir:
 			set dir = $argv[1]; shift; breaksw;
 		case -nounwrap:
-			set unwrap = 0; breaksw;
+			set nounwrap = 1; breaksw;
 		case -dtimc:
 			set dtimc = 1; breaksw;
 		case -boldmc:
 			set boldmc = 1; breaksw;
 		case -nomask:
-			set mask = ""; breaksw
+			set nomask = 1; breaksw
 		case -epibet:
 			set epibet = $argv[1]; shift; breaksw;
 		case -dil:
@@ -134,15 +142,14 @@ endif
 
 #Set defaults
 if ($?frame == 0)	set frame = 0; 
-if ($?outroot == 0)	set outroot = ""
-if ($?thresh == 0)	set thresh = 0.9
 if ($?outpath == 0) set outpath = "unwarp"
 if (! -d $outpath)	mkdir $outpath
+if ($?outroot == 0)	set outroot = ""
+if ($?thresh == 0)	set thresh = 0.9
 if ($?reg == 0) set reg = "despike"
 if ($reg == "despike" && $?dthresh == 0) set dthresh = 2.1
 if ($reg == "smooth" && $?mm3 == 0) set mm3 = 5
 if ($?dir == 0) set dir = "y-"
-if ($?unwrap == 0) set unwrap = 1
 if ($?epibet == 0 ) set epibet = .2
 
 #Check to make sure -reg is set correctly
@@ -162,121 +169,124 @@ endif
 #####################################
 #Preproc, Unit Conversion, Unwraping#
 #####################################
+set out = $outpath/$outroot; set pout = ${outpath}/${outroot}phase
 
 #Copy images over
-$FSL/imcp $mag ${outpath}/${outroot}mag; $FSL/imcp $epi ${outpath}/${outroot}epi
-$FSL/imcp $phase ${outpath}/${outroot}phase
-cd $outpath
-
-#Convert field map to radians
-set range = `fslstats ${outroot}phase -R`.
-if ( $range[1] == -4096.000000 && $range[2] == 4092.000000 ) then
-	$FSL/fslmaths ${outroot}phase -div 4096 -mul 3.14159265 ${outroot}phase_rad -odt float
-else if ( $range[1] == 0.000000 && $range[2] == 4094.000000 ) then
-	$FSL/fslmaths ${outroot}phase -sub 2047 -div 2047 -mul 3.14159265 ${outroot}phase_rad -odt float
-else if ( $range[1] == 0.000000 && $range[2] == 4095.000000 ) then
-	$FSL/fslmaths ${outroot}phase -sub 2047.5 -div 2047.5 -mul 3.14159265 ${outroot}phase_rad \
-				  -odt float
-else
-	echo "Phase map is not within expected range. Exiting..."
-	exit 1
-endif
+$FSL/imcp $mag ${out}mag; $FSL/imcp $epi ${out}epi; $FSL/imcp $phase $pout
 
 #Create brain mask for magnitude
-$FSL/bet ${outroot}mag ${outroot}mag_brain -f 0.3 -m -R
-
-#If user wants, unwrap phase with prelude.
-if ($unwrap == 1) then
-	$FSL/prelude -p ${outroot}phase_rad -a ${outroot}mag -o ${outroot}phase_rad_unwrap \
-				 -m ${outroot}mag_brain_mask
+if ( $?magmask == 0 ) then
+	$FSL/bet ${out}mag ${out}mag_brain -f 0.3 -m -R
+else
+	$FSL/imcp $magmask ${out}mag_brain_mask
+	$FSL/fslmaths ${out}mag -mas ${out}mag_brain_mask ${out}mag_brain
 endif
 
-#Convert to radians/second
-$FSL/fslmaths ${outroot}phase_rad_unwrap -div $delta ${outroot}phase_rad_unwrap_secs
+if ( $?meanmap == 0 ) then 
+	#Convert field map to radians
+	set range = `fslstats ${pout} -R`.
+	if ( $range[1] == -4096.000000 && $range[2] == 4092.000000 ) then
+		$FSL/fslmaths ${pout} -div 4096 -mul 3.14159265 ${pout}_rad -odt float
+	else if ( $range[1] == 0.000000 && $range[2] == 4094.000000 ) then
+		$FSL/fslmaths ${pout} -sub 2047 -div 2047 -mul 3.14159265 ${pout}_rad -odt float
+	else if ( $range[1] == 0.000000 && $range[2] == 4095.000000 ) then
+		$FSL/fslmaths ${pout} -sub 2047.5 -div 2047.5 -mul 3.14159265 ${pout}_rad -odt float
+	else
+		echo "Phase map is not within expected range. Exiting..."
+		exit 1
+	endif
+	set pout = ${pout}_rad
+	
+	#If user wants, unwrap phase with prelude.
+	if ( $?unwrap == 0 ) then
+		$FSL/prelude -p ${pout} -a ${out}mag -o ${pout}_unwrap
+		set pout = ${pout}_unwrap
+	endif
+	
+	#Convert to radians/sec
+	$FSL/fslmaths ${pout} -div $delta ${pout}_secs
+	set pout = ${pout}_secs
+endif
 
 ###############
 #Brain Masking#
 ###############
 
 #Extract epi frame, then brain extract
-$FSL/fslroi ${outroot}epi ${outroot}epi_${frame} $frame 1
-$FSL/bet ${outroot}epi_${frame} ${outroot}epi_${frame}_brain -m -f $epibet -R
+$FSL/fslroi ${out}epi ${out}epi_${frame} $frame 1
+$FSL/bet ${out}epi_${frame} ${out}epi_${frame}_brain -m -f $epibet -R
 
 #Create inverted field map brain mask
-$FSL/fslmaths ${outroot}phase_rad_unwrap_secs -abs -bin -mas ${outroot}mag_brain_mask -mul -1 \
-			  -add 1 -bin ${outroot}phase_rad_unwrap_secs_inv_brain_mask
+$FSL/fslmaths ${pout} -abs -bin -mas ${out}mag_brain_mask -mul -1 -add 1 -bin ${pout}_inv_brain_mask
 		 
 #Cluster inverted brain mask
-$FSL/cluster -i ${outroot}phase_rad_unwrap_secs_inv_brain_mask -t 0.5 --no_table \
-			 -o ${outroot}phase_rad_unwrap_secs_inv_brain_mask_clust
+$FSL/cluster -i ${pout}_inv_brain_mask -t 0.5 --no_table -o ${pout}_inv_brain_mask_clust
 		
 #Save intensity of largest cluster 
-set max = `$FSL/fslstats ${outroot}phase_rad_unwrap_secs_inv_brain_mask_clust -R | awk '{print $2}'`
+set max = `$FSL/fslstats ${pout}_inv_brain_mask_clust -R | awk '{print $2}'`
 #Threshhold the image by max, then invert again. Get a new, tighter brain mask.
-$FSL/fslmaths ${outroot}phase_rad_unwrap_secs_inv_brain_mask_clust -thr $max -bin -mul -1 -add 1 \
-			  -bin -mas ${outroot}mag_brain_mask ${outroot}mag_brain_mask
+$FSL/fslmaths ${pout}_inv_brain_mask_clust -thr $max -bin -mul -1 -add 1 -bin \
+			  -mas ${out}mag_brain_mask ${out}mag_brain_mask
 		 
 #Use the new brain mask on the field map
-$FSL/fslmaths ${outroot}phase_rad_unwrap_secs -mas ${outroot}mag_brain_mask \
-			  ${outroot}phase_rad_unwrap_secs
+$FSL/fslmaths ${pout} -mas ${out}mag_brain_mask ${pout}_masked
+set pout = ${pout}_masked
 
 #Get a 50% brain mask
-set fifty = `$FSL/fslstats ${outroot}mag_brain -P 98 | awk '{print ( $1 / 2 ) }'`
-$FSL/fslmaths ${outroot}mag_brain -thr $fifty -bin ${outroot}mag_brain_fifty_mask
+set fifty = `$FSL/fslstats ${out}mag_brain -P 98 | awk '{print ( $1 / 2 ) }'`
+$FSL/fslmaths ${out}mag_brain -thr $fifty -bin ${out}mag_brain_fifty_mask
 
 #Erode the original brain mask
-$FSL/fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
+$FSL/fslmaths ${out}mag_brain_mask -ero ${out}mag_brain_mask_eroded
 
 #Add eroded and fifty masks
-$FSL/fslmaths ${outroot}mag_brain_mask_eroded -add ${outroot}mag_brain_fifty_mask -thr 0.5 \
-		 	  -bin ${outroot}mag_brain_mask
+$FSL/fslmaths ${out}mag_brain_mask_eroded -add ${out}mag_brain_fifty_mask -thr 0.5 \
+		 	  -bin ${out}mag_brain_mask
 		 
 #Mask the field map again
-$FSL/fslmaths ${outroot}phase_rad_unwrap_secs -mas ${outroot}mag_brain_mask \
-			  ${outroot}phase_rad_unwrap_secs
+$FSL/fslmaths ${pout} -mas ${out}mag_brain_mask ${pout}
+
 
 #Erode brain mask again
-$FSL/fslmaths ${outroot}mag_brain_mask -ero ${outroot}mag_brain_mask_eroded
+$FSL/fslmaths ${out}mag_brain_mask -ero ${out}mag_brain_mask_eroded
 
 ###########
 #Filtering#
 ###########
 
 #Create filter
+set filter = ${pout}_filter_${reg}
 switch ($reg)
 	case "despike":
-		$FSL/fugue --loadfmap=${outroot}phase_rad_unwrap_secs \
-				   --mask=${outroot}mag_brain_mask --despike --despikethreshold=$dthresh \
-				   --savefmap=${outroot}phase_rad_unwrap_secs_filter_${reg}
+		$FSL/fugue --loadfmap=${pout} --mask=${out}mag_brain_mask --despike \
+				   --despikethreshold=$dthresh --savefmap=${filter}
 		breaksw
 	case "smooth":
-		$FSL/fugue --loadfmap=${outroot}phase_rad_unwrap_secs --mask=${outroot}mag_brain_mask \
-		     	   --savefmap=${outroot}phase_rad_unwrap_secs_filter_${reg}-s $mm3
+		$FSL/fugue --loadfmap=${pout} --mask=${out}mag_brain_mask -s $mm3 \
+		     	   --savefmap=${filter}
 		breaksw
 	case "median":
-		$FSL/fugue --loadfmap=${outroot}phase_rad_unwrap_secs --mask=${outroot}mag_brain_mask -m \
-		           --savefmap=${outroot}phase_rad_unwrap_secs_filter_${reg} 
+		$FSL/fugue --loadfmap=${pout} --mask=${out}mag_brain_mask -m \
+		           --savefmap=${filter}
 		breaksw
 	case "none":
-		$FSL/imcp ${outroot}phase_rad_unwrap_secs ${outroot}phase_rad_unwrap_secs_filter_${reg} 
+		$FSL/imcp ${pout} $filter 
 endsw
 
 #Apply the filter to brain edges
-$FSL/fslmaths ${outroot}phase_rad_unwrap_secs_filter_${reg} -sub ${outroot}phase_rad_unwrap_secs \
-			  -mas ${outroot}mag_brain_mask_eroded -add \
-			  ${outroot}phase_rad_unwrap_secs ${outroot}phase_rad_unwrap_secs
+$FSL/fslmaths ${filter} -sub ${pout} -mas ${out}mag_brain_mask_eroded -add ${pout} ${pout}_filtered
+set pout = ${pout}_filtered
 
 #Shift median to 0
-set median = `$FSL/fslstats ${outroot}phase_rad_unwrap_secs -k ${outroot}mag_brain_mask -P 50`
-$FSL/fslmaths ${outroot}phase_rad_unwrap_secs -sub $median ${outroot}phase_rad_unwrap_secs
+set median = `$FSL/fslstats ${pout} -k ${out}mag_brain_mask -P 50`
+$FSL/fslmaths ${pout} -sub $median ${pout}_norm
+set pout = ${pout}_norm
 
 #Estimate signal loss from fieldmap. Range goes from 0 (no signal) to 1 (full signal)
-$FSL/sigloss -i ${outroot}phase_rad_unwrap_secs --te=${te} -m ${outroot}mag_brain_mask \
-			 -s ${outroot}signal_loss
+$FSL/sigloss -i ${pout} --te=${te} -m ${out}mag_brain_mask -s ${out}signal_loss
 
 #Multiply mag brain by signal loss image. Will result in a mag brain with areas of signal loss.
-$FSL/fslmaths ${outroot}signal_loss -mul ${outroot}mag_brain ${outroot}mag_brain_signal_lossed \
-			  -odt float
+$FSL/fslmaths ${out}signal_loss -mul ${out}mag_brain ${out}mag_brain_signal_lossed -odt float
 
 #####################################
 #FUGUE, Registration, Transformation#
@@ -284,49 +294,49 @@ $FSL/fslmaths ${outroot}signal_loss -mul ${outroot}mag_brain ${outroot}mag_brain
 
 #Run fugue on the signal lossed magnitude image. Will distort it according to the field map. 
 #Then do the same thing for the signal_loss fmap image.
-$FSL/fugue -i ${outroot}mag_brain_signal_lossed --loadfmap=${outroot}phase_rad_unwrap_secs \
-	  --mask=${outroot}mag_brain_mask -w ${outroot}mag_brain_signal_lossed_distorted \
-	  --nokspace --unwarpdir=$dir --dwell=$dwell 
-$FSL/fugue -i ${outroot}signal_loss --loadfmap=${outroot}phase_rad_unwrap_secs  --dwell=$dwell \
-	  	   -w ${outroot}signal_loss_distorted --nokspace --unwarpdir=$dir \
-	  	   --mask=${outroot}mag_brain_mask
+$FSL/fugue -i ${out}mag_brain_signal_lossed --loadfmap=${pout} --mask=${out}mag_brain_mask \
+		   -w ${out}mag_brain_signal_lossed_distorted --nokspace --unwarpdir=$dir --dwell=$dwell 
+$FSL/fugue -i ${out}signal_loss --loadfmap=${pout} --dwell=$dwell -w ${out}signal_loss_distorted  \
+		   --nokspace --unwarpdir=$dir --mask=${out}mag_brain_mask
 
 #Threshhold the distorted signal loss brain according to user chosen signal loss threshhold
-$FSL/fslmaths ${outroot}signal_loss_distorted -thr $thresh ${outroot}signal_loss_distorted
+$FSL/fslmaths ${out}signal_loss_distorted -thr $thresh ${out}signal_loss_distorted
 
 #Register the distorted magnitude to the distorted functional. Output a transformation file only.
 #Use the threshholded signal loss brain as weighting (areas with 0 will be ignored)
-$FSL/flirt -in ${outroot}mag_brain_signal_lossed_distorted -ref ${outroot}epi_${frame}_brain \
-	  -omat ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat -dof 6 \
-	  -inweight ${outroot}signal_loss_distorted
+$FSL/flirt -in ${out}mag_brain_signal_lossed_distorted -ref ${out}epi_${frame}_brain \
+	  	   -omat ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat -dof 6 \
+	       -out ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain \
+	       -inweight ${out}signal_loss_distorted
 
-#Apply the created transform to the field map and brain mask
-$FSL/flirt -in ${outroot}phase_rad_unwrap_secs -ref ${outroot}epi_${frame}_brain \
-	  -init ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
-	  -applyxfm -out ${outroot}phase_rad_unwrap_secs_to_${outroot}epi_${frame}_brain
-$FSL/flirt -in ${outroot}mag_brain_mask -ref ${outroot}epi_${frame}_brain \
-	  -init ${outroot}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
-	  -applyxfm -out ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain 
-#Rebinarize mask.
-$FSL/fslmaths ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain -thr 0.5 -bin \
-			  ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain
+#Apply the created transform to the field map
+$FSL/flirt -in ${pout} -ref ${out}epi_${frame}_brain -applyxfm \
+	  -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
+	  -out ${pout}_to_${outroot}epi_${frame}_brain
+set pout = ${pout}_to_${outroot}epi_${frame}_brain
+
+#Apply transform to mask and then rebinarize
+$FSL/flirt -in ${out}mag_brain_mask -ref ${out}epi_${frame}_brain \
+	  -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat \
+	  -applyxfm -out ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain 
+$FSL/fslmaths ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain -thr 0.5 -bin \
+			  ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain
+			  
 #If user wants, dilate brain mask slightly in order to prevent erosion
 if ( $?dil == 1 ) then
-	$FSL/fslmaths ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain -dilM -dilM -ero \
-				  ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain
+	$FSL/fslmaths ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain -dilM -dilM -ero \
+				  ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain
 endif
 
 #Run fugue using the registerted field map on the distorted epi. 
 #Will undistort the first frame epi and save the shift map that does this.
-$FSL/fugue --loadfmap=${outroot}phase_rad_unwrap_secs_to_${outroot}epi_${frame}_brain \
-	  --dwell=$dwell --mask=${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain \
-	  -i ${outroot}epi_${frame} -u ${outroot}epi_${frame}_undist --unwarpdir=$dir \
-	  --saveshift=${outroot}epi_${frame}_brain_undist_shift
+$FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${frame}_undist --unwarpdir=$dir \
+	  	   -i ${out}epi_${frame} --saveshift=${out}epi_${frame}_undist_shift \
+	       --mask=${out}mag_brain_mask_to_${outroot}epi_${frame}_brain
 
 #Convert the shiftwarp to an absolute warp
-$FSL/convertwarp -s ${outroot}epi_${frame}_brain_undist_shift \
-		    -o ${outroot}epi_${frame}_brain_undist_shift_warp -r ${outroot}epi_${frame}_brain \
-	        --shiftdir=$dir
+$FSL/convertwarp -s ${out}epi_${frame}_undist_shift -r ${out}epi_${frame} --shiftdir=$dir \
+		    	 -o ${out}epi_${frame}_undist_shift_warp 
 	        
 ###################
 #Motion Correction#
@@ -335,39 +345,53 @@ $FSL/convertwarp -s ${outroot}epi_${frame}_brain_undist_shift \
 if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	
 	#Setup mask if not already done
-	if ( $?mask == 0 ) set mask = "-m ${outroot}mag_brain_mask_to_${outroot}epi_${frame}_brain"
+	if ( $?nomask == 1 ) then
+		set mask = ""
+	else
+		set mask = "--mask=${out}mag_brain_mask_to_${outroot}epi_${frame}_brain"
+	endif
 	
-	$FSL/fslsplit ${outroot}epi ${outroot}epi_tmp
-	foreach tmp ( ${outroot}epi_tmp* )
+	if ( $?meanmap == 0 ) then
+		$FSL/fslsplit ${out}epi ${out}epi_tmp
+		foreach tmp ( ${out}epi_tmp* )
 		
-		#Create correct pre matrices
-		if ( $?dtimc == 1 ) then
-			set tmp = `$FSL/remove_ext $tmp`
-			echo "processing $tmp" >> ${outroot}eddycorrect.log
-			echo "" >> ${outroot}eddycorrect.log
-			$FSL/flirt -in $tmp -ref ${outroot}epi_${frame} -nosearch -omat ${tmp}.mat \
-						-paddingsize 1
-			set pre = "${tmp}.mat"
-			echo "Final Result:" >> ${outroot}eddycorrect.log
-			cat $pre >> ${outroot}eddycorrect.log
-			echo "" >> ${outroot}eddycorrect.log
-		else
-			if ( $?notfirst == 0 ) then
-				$FSL/mcflirt -reffile ${outroot}epi_${frame} -in ${outroot}epi -plots -rmsrel \
-							 -rmsabs -mats -out ${outroot}mcf
+			#Create correct pre matrices
+			if ( $?dtimc == 1 ) then
+				set tmp = `$FSL/remove_ext $tmp`
+				echo "processing $tmp" >> ${out}eddycorrect.log
+				echo "" >> ${out}eddycorrect.log
+				$FSL/flirt -in $tmp -ref ${out}epi_${frame} -nosearch -omat ${tmp}.mat \
+						   -paddingsize 1
+				set pre = "${tmp}.mat"
+				echo "Final Result:" >> ${out}eddycorrect.log
+				cat $pre >> ${out}eddycorrect.log
+				echo "" >> ${out}eddycorrect.log
+			else
+				if ( $?notfirst == 0 ) then
+					$FSL/mcflirt -reffile ${out}epi_${frame} -in ${out}epi -plots -rmsrel \
+							 	 -rmsabs -mats -out ${out}mcf
+				endif
+				set notfirst = 1
+				set tmp = `$FSL/remove_ext $tmp`
+				set num = `echo $tmp | grep -o "tmp.*[0-9]" | sed 's/tmp//g'`
+				set pre = "${out}mcf.mat/MAT_${num}"
 			endif
-			set notfirst = 1
-			set tmp = `$FSL/remove_ext $tmp`
-			set num = `echo $tmp | grep -o "tmp.*[0-9]" | sed 's/tmp//g'`
-			set pre = "${outroot}mcf.mat/MAT_${num}"
-		endif
-
-		#Apply motion correction
-		$FSL/applywarp -i $tmp -o ${tmp}_undist_mcf -r ${outroot}epi --abs $mask \
-		          	   -w ${outroot}epi_${frame}_brain_undist_shift_warp --premat=$pre
-	end
+		
+			#Apply motion correction
+			$FSL/applywarp -i $tmp -o ${tmp}_mcf_undist -r ${out}epi --abs $mask \
+		          	  	   -w ${out}epi_${frame}_undist_shift_warp --premat=$pre
+		end
 	
-	$FSL/fslmerge -t ${outroot}epi_undist_mcf ${outroot}epi_tmp*_undist_mcf.nii.gz
-	rm ${outroot}epi_tmp*	
+		$FSL/fslmerge -t ${out}epi_mcf_undist ${out}epi_tmp*_mcf_undist.nii.gz
+		rm ${out}epi_tmp*	
+	else
+		$FSL/mcflirt -reffile ${out}epi_${frame} -in ${out}epi -plots -rmsrel -rmsabs -mats \
+					 -out ${out}mcf
+		$FSL/fugue --loadfmap=${pout} --dwell=$dwell -i ${out}mcf -u ${out}epi_mcf_undist \
+			  --unwarpdir=$dir $mask
+	endif
+else
+	$FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_undist --unwarpdir=$dir \
+	  	   	   -i ${out}epi --mask=${out}mag_brain_mask_to_${outroot}epi_${frame}_brain
 endif
 		
