@@ -375,9 +375,9 @@ foreach session ( $sessions )
 	
 	#turn on hippocampus subfield segmentation for version 5.1.
 	if ( $free_ver == "5.1" && $?nohippo == 0 ) then
-		echo "recon-all -s $session $recon_images -all -qcache -hippo-subfields" >> ${session}.batch
+		echo "recon-all -s $session $recon_images -all -qcache -hippo-subfields -mprage" >> ${session}.batch
 	else
-		echo "recon-all -s $session $recon_images -all -qcache" >> ${session}.batch
+		echo "recon-all -s $session $recon_images -all -qcache -mprage " >> ${session}.batch
 	endif
 	
 	#unless user overrides, setup registration to atlas space
