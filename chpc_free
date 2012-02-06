@@ -38,6 +38,7 @@ if ( $#argv == 0 ) then
 	echo " 	-wtime: Specify job wall time in hours. Default is 48."
 	echo "	-sub: Submit jobs individually. Default is for user to sumbit as a group."
 	echo "	-nohippo: Turn off 5.1 hippocampus subfield segmentation. On by default."
+	echo "	-noresample: Use nifti_4dfp to avoid initial FreeSurfer resampling."
 	echo ""
 	echo "Dependencies:"
 	echo " 	1. Freesurfer (mri_convert, mri_probedicom, and mri_probe_ima) in path"
@@ -137,6 +138,8 @@ while ( $#argv > 0 )
 			set sub = 1; breaksw;
 		case -nohippo:
 			set nohippo = 1; breaksw;
+		case -noresample:
+			set noresample = 1; breaksw;
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -325,6 +328,14 @@ foreach session ( $sessions )
 	#set up the recon images. 
 	set raw_nii = `ls *.nii`; set recon_images = (); set atlas_images = (); @ recon_count = 1
 	while ($recon_count <= $#raw_nii )
+		
+		#Use nifti_4dfp to avoid resampling
+		if ( $?noresample == 1 ) then
+			cp $raw_nii[$recon_count] ${raw_nii[$recon_count]:r}_raw.nii
+			nifti_4dfp -4 $raw_nii[$recon_count]:r $raw_nii[$recon_count]:r
+			nifti_4dfp -n $raw_nii[$recon_count]:r $raw_nii[$recon_count]:r
+		endif
+		
 		#if user wanted, only use the specificed run number
 		if ( $?specific == 1 ) then
 			#Sed command is to remove s and leading zeros if present
