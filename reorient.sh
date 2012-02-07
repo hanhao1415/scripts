@@ -1,6 +1,6 @@
 #!/bin/sh -x
 #From Mike Hodge via Mark Jenkinson
-
+export FSLOUTPUTTYPE=NIFTI
 input=$1
 newim=$2
 im=${input}_std
