@@ -16,7 +16,7 @@ fi
 
 $FSLDIR/bin/fslhd $im | grep sto_xyz | sed 's/sto_xyz:.[    ]*//' > ${newim}_oldsform.mat
 
-cp -p ${im}.nii.gz ${newim}.nii.gz
+cp -p ${im}.nii ${newim}.nii
 
 $FSLDIR/bin/convert_xfm -omat ${newim}_oldsforminv.mat -inverse ${newim}_oldsform.mat
 origx=`sed -n 1p ${newim}_oldsforminv.mat | awk '{ print $4 }'`
@@ -30,4 +30,4 @@ $FSLDIR/bin/fslorient -copysform2qform $newim
 
 $FSLDIR/bin/fslhd $newim | grep sto_xyz | sed 's/sto_xyz:.[         ]*//' > ${newim}_newsform.mat
 
-$FSLDIR/bin/fslhd -x ${newim}.nii.gz > ${newim}.xml
+$FSLDIR/bin/fslhd -x ${newim}.nii > ${newim}.xml
