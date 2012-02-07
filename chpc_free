@@ -329,11 +329,10 @@ foreach session ( $sessions )
 	set raw_nii = `ls *.nii`; set recon_images = (); set atlas_images = (); @ recon_count = 1
 	while ($recon_count <= $#raw_nii )
 		
-		#Use nifti_4dfp to avoid resampling
+		#Reorient to avoid resampling
 		if ( $?noresample == 1 ) then
 			cp $raw_nii[$recon_count] ${raw_nii[$recon_count]:r}_raw.nii
-			nifti_4dfp -4 $raw_nii[$recon_count]:r $raw_nii[$recon_count]:r
-			nifti_4dfp -n $raw_nii[$recon_count]:r $raw_nii[$recon_count]:r
+			~/scripts/reorient.sh ${raw_nii[$recon_count]:r}_raw $raw_nii[$recon_count]
 		endif
 		
 		#if user wanted, only use the specificed run number
