@@ -332,7 +332,7 @@ foreach session ( $sessions )
 		#Reorient to avoid resampling
 		if ( $?noresample == 1 ) then
 			cp $raw_nii[$recon_count] ${raw_nii[$recon_count]:r}_raw.nii
-			~/scripts/reorient.sh ${raw_nii[$recon_count]:r}_raw $raw_nii[$recon_count:r]
+			~/scripts/reorient.sh ${raw_nii[$recon_count]:r}_raw $raw_nii[$recon_count]:r
 		endif
 		
 		#if user wanted, only use the specificed run number
