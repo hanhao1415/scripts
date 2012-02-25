@@ -40,8 +40,8 @@ if ($#argv == 0) then
 	echo " 	-dir <dir> 		Direction of epi unwarp. Default is y-. Takes x,x-,y,y-,z,z-."
 	echo "	-epibet <epibet> 	BET fractional intensity threshold for EPI. Default is .2."
 	echo "	-magbet <magbet> 	BET fractional intensity threshold for magnitude image. Default is .3."
-	echo "	-dtimc 			Do eddy correction for dti input. Will only resample once."
-	echo "	-boldmc 		Apply mcflirt to bold input. Will only resample once."
+	echo "	-dtimc 			Use FSL to motion correct dti input. Will only resample once."
+	echo "	-boldmc 		Use FSL to motion correct bold input. Will only resample once."
 	echo "	-meanmap 		Turns off conversion to radians/sec and phase unwrapping."
 	echo "	-nounwrap 		Turn off phase unwrapping. On by default."
 	echo " 	-nomask 		Do not use mask when applying motion correction."
@@ -171,19 +171,11 @@ endif
 #Create log file
 set out = $outdir/$outroot; set pout = ${outdir}/${outroot}phase
 set log = $outdir/${program}.log
-if ( ! -e $log ) then
-	touch $log
-	set runnum = 1
-else
-	set oldruns = `grep -c "Run Number:" $log`
-	set runnum = `echo "$oldruns + 1" | bc`
-endif
-echo ""|& tee -a $log
+echo "" |& tee $log
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "" |& tee -a $log
 echo "Program: ${program}" |& tee -a $log
-echo "Run Number: $runnum" |& tee -a $log
 echo "Outdir: $outdir" |& tee -a $log
 echo "Outroot: $outroot" |& tee -a $log
 echo "Start Time: `date '+%Y-%m-%d-%I-%M-%S'`" |& tee -a $log
