@@ -1,5 +1,5 @@
 #!/bin/tcsh -f
-#Processing steps adapted from FSL's featlib.tcl 
+#Processing steps taken from FSL's featlib.tcl 
 #Tyler Blazey, 2011-2012.
 
 if ( $?FSLDIR == 0 ) then
@@ -46,6 +46,7 @@ if ($#argv == 0) then
 	echo "	-nounwrap 		Turn off phase unwrapping. On by default."
 	echo " 	-nomask 		Do not use mask when applying motion correction."
 	echo " 	-dil 			Dilate magnitude brain mask before applying to motion corrected EPI."
+	echo "	-debug			Turn on set echo."
 	echo ""
 	echo "Tips:"
 	echo "	Standard CAP DTI parameters:  Dwell Time=.98ms, Echo Time=112ms."
@@ -123,7 +124,9 @@ while ($#argv > 0)
 		case -nomask:
 			set nomask = 1; breaksw
 		case -dil:
-			set dil = $argv[1]; breaksw
+			set dil = 1; breaksw
+		case -debug:
+			set echo; breaksw
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -338,6 +341,7 @@ set cmd = ( $FSL/fugue -i ${out}mag_brain_signal_lossed --loadfmap=${pout} )
 set cmd = ( $cmd --mask=${out}mag_brain_mask -w ${out}mag_brain_signal_lossed_distorted )
 set cmd = ( $cmd --nokspace --unwarpdir=$dir --dwell=$dwell )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
+
 #Do the same thing for the signal_loss fmap image.
 set cmd = ( $FSL/fugue -i ${out}signal_loss --loadfmap=${pout} --dwell=$dwell )
 set cmd = ( $cmd -w ${out}signal_loss_distorted --nokspace --unwarpdir=$dir )
@@ -372,6 +376,7 @@ set cmd = ( $FSL/flirt -in ${out}mag_brain_mask -ref ${out}epi_${ref}_brain )
 set cmd = ( $cmd -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
 set cmd = ( $cmd -applyxfm -out ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
+
 #Rebinarize mask
 set cmd = ( $FSL/fslmaths ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain -thr 0.5 -bin )
 set cmd = ( $cmd ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
@@ -385,15 +390,15 @@ if ( $?dil == 1 ) then
 endif
 
 #Run fugue using the registerted field map on the distorted epi. 
-#Will undistort the epi reference frame and save the shift map that does this.
-set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${ref}_undist )
-set cmd = ( $cmd  -i ${out}epi_${ref} --saveshift=${out}epi_${ref}_undist_shift )
+#Will unwarport the epi reference frame and save the shift map that does this.
+set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${ref}_unwarp )
+set cmd = ( $cmd  -i ${out}epi_${ref} --saveshift=${out}epi_${ref}_unwarp_shift )
 set cmd = ( $cmd --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain --unwarpdir=$dir )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
 #Convert the shiftwarp to an absolute warp
-set cmd = ( $FSL/convertwarp -s ${out}epi_${ref}_undist_shift -r ${out}epi_${ref} )
-set cmd = ( $cmd --shiftdir=$dir -o ${out}epi_${ref}_undist_shift_warp ) 
+set cmd = ( $FSL/convertwarp -s ${out}epi_${ref}_unwarp_shift -r ${out}epi_${ref} )
+set cmd = ( $cmd --shiftdir=$dir -o ${out}epi_${ref}_unwarp_shift_warp ) 
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	        
 ###################
@@ -412,7 +417,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	set cmd = ( $FSL/fslsplit ${out}epi ${out}epi_tmp ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set vols = `$FSL/fslval ${out}epi dim4`; @ k = 0
 	while ( $k < $vols )
-		set tmp =  ${out}epi_tmp`printf "%04d" $k`
+		set num = `printf "%04d" $k`; set tmp = ${out}epi_tmp${num}
 		#Create correct pre matrices
 		if ( $?dtimc == 1 ) then
 			echo "processing $tmp" >> ${out}eddycorrect.log
@@ -429,24 +434,23 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 				set cmd = ( $cmd -rmsrel -rmsabs -mats -out ${out}mcf )
 				echo $cmd |& tee -a $log; $cmd |& tee -a $log
 			endif
-			set num = `printf "%04d" $k`
 			set pre = "${out}mcf.mat/MAT_${num}"
 		endif
 		
 		#Apply motion correction
-		set cmd = ( $FSL/applywarp -i $tmp -o ${tmp}_mcf_undist -r ${out}epi --abs $mask )
-		set cmd = ( $cmd -w ${out}epi_${ref}_undist_shift_warp --premat=$pre --interp=spline )
+		set cmd = ( $FSL/applywarp -i $tmp -o ${tmp}_mcf_unwarp -r ${out}epi --abs $mask )
+		set cmd = ( $cmd -w ${out}epi_${ref}_unwarp_shift_warp --premat=$pre --interp=spline )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		@ k++
 	end
 		
 	#Merge the split, corrected frames
-	set cmd = ( $FSL/fslmerge -t ${out}epi_mcf_undist ${out}epi_tmp*_mcf_undist.nii.gz )
+	set cmd = ( $FSL/fslmerge -t ${out}epi_mcf_unwarp ${out}epi_tmp*_mcf_unwarp.nii.gz )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( rm ${out}epi_tmp* ); echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 else
 	#Apply shift map to whole series. Assumes series has already been aligned.
-	set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_undist --unwarpdir=$dir )
+	set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_unwarp --unwarpdir=$dir )
 	set cmd = ( $cmd -i ${out}epi --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
