@@ -16,35 +16,35 @@ endif
 set program = $0:t
 if ($#argv == 0) then
 	echo ""
-	echo "${program}: A basic wrapper for FSL's field map tools"
+	echo "${program}: A basic wrapper for FSL's field map tools."
 	echo ""
 	echo "Usage:"
 	echo ""
 	echo "Required Arguments:"
 	echo "	-m <mag>		Field map magnitude image."
-	echo "	-p <phase> 		Field map field map phase image"
+	echo "	-p <phase> 		Field map field map phase image."
 	echo "	-e <epi> 		EPI to unwarp."
-	echo "	-dwell <dwell>		EPI dwell time/echo spacing. Divide by acceleration factor if necessary. In milliseconds"
-	echo "	-te <te> 		EPI echo time. In milliseconds"
+	echo "	-dwell <dwell>		EPI dwell time/echo spacing. Divide by acceleration factor if necessary. In milliseconds."
+	echo "	-te <te> 		EPI echo time. In milliseconds."
 	echo "	-delta <delta> 		Difference between field map echo times. In milliseconds."
 	echo ""
 	echo "Optional Arguments:" 
-	echo "	-magmask <mag mask> 	Specify magnitude mask image instead of estimating with BET."
-	echo "	-meanmap 		Turns off conversion to radians/sec and phase unwrapping."
+	echo "	-magmask <magmask> 	Specify magnitude mask image instead of estimating with BET."
 	echo "	-reg <reg> 		Field map regulation. Takes despike, smooth, median, or none. Default is despike."
-	echo "	-frame	<frame> 	EPI frame to extract for registration. Default is 0."
-	echo "	-o <outdir> 		Directory to store results. Default is unwarp"
-	echo "	-r <outroot> 		Root for results. Default is none"
-	echo "	-thresh <thresh> 	Signal loss threshhold. Default is 0.1"
-	echo "	-dthresh <dthresh> 	Despike threshhold. For use with -reg despike. Default is 2.1"
-	echo " 	-mm3 <mm3> 		Size of kernel to use with -reg smooth. Default is 5"
-	echo " 	-dir <dir> 		Direction of epi unwarp. Default is y-. Takes x,x-,y,y-,z,z-"
-	echo "	-nounwrap 		Turn off phase unwrapping. On by default."
+	echo "	-ref <ref>		EPI frame to extract for registration. Default is 0."
+	echo "	-o <outdir> 		Directory to store results. Default is unwarp."
+	echo "	-r <outroot> 		Root for results. No root is used by default."
+	echo "	-thresh <thresh> 	Signal loss threshhold. Default is 0.1."
+	echo "	-dthresh <dthresh> 	Despike threshhold. For use with -reg despike. Default is 2.1."
+	echo " 	-mm3 <mm3> 		Size of kernel to use with -reg smooth. Default is 5."
+	echo " 	-dir <dir> 		Direction of epi unwarp. Default is y-. Takes x,x-,y,y-,z,z-."
+	echo "	-epibet <epibet> 	BET fractional intensity threshold for EPI. Default is .2."
+	echo "	-magbet <magbet> 	BET fractional intensity threshold for magnitude image. Default is .3."
 	echo "	-dtimc 			Do eddy correction for dti input. Will only resample once."
 	echo "	-boldmc 		Apply mcflirt to bold input. Will only resample once."
+	echo "	-meanmap 		Turns off conversion to radians/sec and phase unwrapping."
+	echo "	-nounwrap 		Turn off phase unwrapping. On by default."
 	echo " 	-nomask 		Do not use mask when applying motion correction."
-	echo "	-epibet <epibet> 	BET fractional intensity threshold for EPI. Default is .2"
-	echo "	-magbet <magbet> 	BET fractional intensity threshold for magnitude image. Default is .3"
 	echo " 	-dil 			Dilate magnitude brain mask before applying to motion corrected EPI."
 	echo ""
 	echo "Tips:"
@@ -67,63 +67,63 @@ while ($#argv > 0)
 				echo "Error: Cannot find magnitude image at $argv[1]."
 				exit 1
 			endif
-			set mag = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
-		case -e: 
-			if ( `$FSL/imtest $argv[1]` == 0 ) then
-				echo "Error: Cannot find epi image at $argv[1]."
-				exit 1
-			endif
-			set epi = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
+			set mag = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw
 		case -p:
 			if ( `$FSL/imtest $argv[1]` == 0 ) then
 				echo "Error: Cannot find phase image at $argv[1]."
 				exit 1
 			endif
-			set phase = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
+			set phase = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw
+		case -e: 
+			if ( `$FSL/imtest $argv[1]` == 0 ) then
+				echo "Error: Cannot find epi image at $argv[1]."
+				exit 1
+			endif
+			set epi = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw
+		case -dwell:
+			set dwell = `echo "$argv[1]/1000" | bc -l`; shift; breaksw	
+		case -te:
+			set te = `echo "$argv[1]/1000" | bc -l`; shift; breaksw
+		case -delta:
+			set delta = `echo "$argv[1]/1000" | bc -l`; shift; breaksw
 		case -magmask: 
 			if ( `$FSL/imtest $argv[1]` == 0 ) then
 				echo "Error: Cannot find magnitude mask image at $argv[1]."
 				exit 1
 			endif
-			set magmask = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw;
-		case -meanmap:
-			set meanmap = 1; breaksw;
-		case -o:
-			set outdir = $argv[1]; shift; breaksw;
-		case -r:
-			set outroot = "$argv[1]_"; shift; breaksw;
-		case -te:
-			set te = `echo "$argv[1]/1000" | bc -l`; shift; breaksw;
-		case -dwell:
-			set dwell = `echo "$argv[1]/1000" | bc -l`; shift; breaksw;
-		case -delta:
-			set delta = `echo "$argv[1]/1000" | bc -l`; shift; breaksw;
-		case -thresh:
-			set thresh = `echo "1-$argv[1]" | bc -l` ; shift; breaksw;
-		case -frame:
-			set frame = $argv[1]; shift; breaksw;
+			set magmask = `$FSLDIR/bin/remove_ext $argv[1]`; shift; breaksw
 		case -reg:
-			set reg = $argv[1]; shift; breaksw;
+			set reg = $argv[1]; shift; breaksw
+		case -ref:
+			set ref = $argv[1]; shift; breaksw	
+		case -o:
+			set outdir = $argv[1]; shift; breaksw
+		case -r:
+			set outroot = "$argv[1]_"; shift; breaksw	
+		case -thresh:
+			set thresh = `echo "1-$argv[1]" | bc -l` ; shift; breaksw
 		case -dthresh:
-			set dthresh = $argv[1]; shift; breaksw;
+			set dthresh = $argv[1]; shift; breaksw
 		case -mm3:
-			set mm3 = $argv[1]; shift; breaksw;
+			set mm3 = $argv[1]; shift; breaksw
 		case -dir:
-			set dir = $argv[1]; shift; breaksw;
-		case -nounwrap:
-			set nounwrap = 1; breaksw;
+			set dir = $argv[1]; shift; breaksw	
+		case -epibet:
+			set epibet = $argv[1]; shift; breaksw
+		case -magbet:
+			set magbet = $argv[1]; shift; breaksw
 		case -dtimc:
-			set dtimc = 1; breaksw;
+			set dtimc = 1; breaksw
 		case -boldmc:
-			set boldmc = 1; breaksw;
+			set boldmc = 1; breaksw	
+		case -meanmap:
+			set meanmap = 1; breaksw
+		case -nounwrap:
+			set nounwrap = 1; breaksw
 		case -nomask:
 			set nomask = 1; breaksw
-		case -epibet:
-			set epibet = $argv[1]; shift; breaksw;
-		case -magbet:
-			set magbet = $argv[1]; shift; breaksw;
 		case -dil:
-			set dil = $argv[1]; breaksw;
+			set dil = $argv[1]; breaksw
 		default:
 			echo "Option $flag not recognized. See usage."
 			exit 1
@@ -141,7 +141,7 @@ if ( $?mag == 0 || $?epi == 0 || $?phase == 0  || $?dwell == 0 || $?te == 0 || $
 endif
 
 #Set defaults
-if ($?frame == 0)	set frame = 0; 
+if ($?ref == 0)	set ref = 0; 
 if ($?outdir == 0) set outdir = "unwarp"
 if (! -d $outdir)	mkdir $outdir
 if ($?outroot == 0)	set outroot = ""
@@ -250,10 +250,10 @@ endif
 #Brain Masking#
 ###############
 
-#Extract epi frame, then brain extract
-set cmd = ( $FSL/fslroi ${out}epi ${out}epi_${frame} $frame 1 )
+#Extract epi refrence frame, then brain extract
+set cmd = ( $FSL/fslroi ${out}epi ${out}epi_${ref} $ref 1 )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
-set cmd = ( $FSL/bet ${out}epi_${frame} ${out}epi_${frame}_brain -m -f $epibet -R )
+set cmd = ( $FSL/bet ${out}epi_${ref} ${out}epi_${ref}_brain -m -f $epibet -R )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
 #Create inverted field map brain mask
@@ -357,51 +357,51 @@ set cmd = ( $cmd ${out}signal_loss_distorted ); echo $cmd |& tee -a $log; $cmd |
 
 #Register the distorted magnitude to the distorted functional. 
 #Use the threshholded signal loss brain as weighting (areas with 0 will be ignored)
-set cmd = ( $FSL/flirt -in ${out}mag_brain_signal_lossed_distorted -ref ${out}epi_${frame}_brain )
-set cmd = ( $cmd -omat ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat )
-set cmd = ( $cmd -out ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain )
+set cmd = ( $FSL/flirt -in ${out}mag_brain_signal_lossed_distorted -ref ${out}epi_${ref}_brain )
+set cmd = ( $cmd -omat ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
+set cmd = ( $cmd -out ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain )
 set cmd = ( $cmd -inweight ${out}signal_loss_distorted -dof 6 )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 
 #Apply transformation to original magnitude image for QA purposes
-set cmd = ( $FSL/flirt -in ${out}mag_brain -ref ${out}epi_${frame}_brain -applyxfm -init )
-set cmd = ( $cmd ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat )
-set cmd = ( $cmd -out ${out}mag_brain_to_${outroot}epi_${frame}_brain )
+set cmd = ( $FSL/flirt -in ${out}mag_brain -ref ${out}epi_${ref}_brain -applyxfm -init )
+set cmd = ( $cmd ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
+set cmd = ( $cmd -out ${out}mag_brain_to_${outroot}epi_${ref}_brain )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 
 #Apply transformation to the field map
-set cmd = ( $FSL/flirt -in ${pout} -ref ${out}epi_${frame}_brain -applyxfm )
-set cmd = ( $cmd -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat )
-set cmd = ( $cmd -out ${pout}_to_${outroot}epi_${frame}_brain )
-echo $cmd |& tee -a $log; $cmd |& tee -a $log ; set pout = ${pout}_to_${outroot}epi_${frame}_brain
+set cmd = ( $FSL/flirt -in ${pout} -ref ${out}epi_${ref}_brain -applyxfm )
+set cmd = ( $cmd -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
+set cmd = ( $cmd -out ${pout}_to_${outroot}epi_${ref}_brain )
+echo $cmd |& tee -a $log; $cmd |& tee -a $log ; set pout = ${pout}_to_${outroot}epi_${ref}_brain
 
 #Apply transform to mask
-set cmd = ( $FSL/flirt -in ${out}mag_brain_mask -ref ${out}epi_${frame}_brain )
-set cmd = ( $cmd -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${frame}_brain.mat )
-set cmd = ( $cmd -applyxfm -out ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain )
+set cmd = ( $FSL/flirt -in ${out}mag_brain_mask -ref ${out}epi_${ref}_brain )
+set cmd = ( $cmd -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
+set cmd = ( $cmd -applyxfm -out ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 #Rebinarize mask
-set cmd = ( $FSL/fslmaths ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain -thr 0.5 -bin )
-set cmd = ( $cmd ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain )
+set cmd = ( $FSL/fslmaths ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain -thr 0.5 -bin )
+set cmd = ( $cmd ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 			  
 #If user wants, dilate brain mask slightly in order to prevent erosion
 if ( $?dil == 1 ) then
-	set cmd = ( $FSL/fslmaths ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain -dilM )
-	set cmd = ( $cmd -dilM -ero ${out}mag_brain_mask_to_${outroot}epi_${frame}_brain )
+	set cmd = ( $FSL/fslmaths ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain -dilM )
+	set cmd = ( $cmd -dilM -ero ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 endif
 
 #Run fugue using the registerted field map on the distorted epi. 
-#Will undistort the first frame epi and save the shift map that does this.
-set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${frame}_undist )
-set cmd = ( $cmd  -i ${out}epi_${frame} --saveshift=${out}epi_${frame}_undist_shift )
-set cmd = ( $cmd --mask=${out}mag_brain_mask_to_${outroot}epi_${frame}_brain --unwarpdir=$dir )
+#Will undistort the epi reference frame and save the shift map that does this.
+set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${ref}_undist )
+set cmd = ( $cmd  -i ${out}epi_${ref} --saveshift=${out}epi_${ref}_undist_shift )
+set cmd = ( $cmd --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain --unwarpdir=$dir )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
 #Convert the shiftwarp to an absolute warp
-set cmd = ( $FSL/convertwarp -s ${out}epi_${frame}_undist_shift -r ${out}epi_${frame} )
-set cmd = ( $cmd --shiftdir=$dir -o ${out}epi_${frame}_undist_shift_warp ) 
+set cmd = ( $FSL/convertwarp -s ${out}epi_${ref}_undist_shift -r ${out}epi_${ref} )
+set cmd = ( $cmd --shiftdir=$dir -o ${out}epi_${ref}_undist_shift_warp ) 
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	        
 ###################
@@ -414,7 +414,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	if ( $?nomask == 1 ) then
 		set mask = ""
 	else
-		set mask = "--mask=${out}mag_brain_mask_to_${outroot}epi_${frame}_brain"
+		set mask = "--mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain"
 	endif
 	
 	set cmd = ( $FSL/fslsplit ${out}epi ${out}epi_tmp ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -425,7 +425,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 		if ( $?dtimc == 1 ) then
 			echo "processing $tmp" >> ${out}eddycorrect.log
 			echo "" >> ${out}eddycorrect.log
-			set cmd = ( $FSL/flirt -in $tmp -ref ${out}epi_${frame} -nosearch -omat ${tmp}.mat )
+			set cmd = ( $FSL/flirt -in $tmp -ref ${out}epi_${ref} -nosearch -omat ${tmp}.mat )
 			set cmd = ( $cmd -paddingsize 1 ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 			set pre = "${tmp}.mat"
 			echo "Final Result:" >> ${out}eddycorrect.log
@@ -433,7 +433,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 			echo "" >> ${out}eddycorrect.log
 		else
 			if ( $k == 0 ) then
-				set cmd = ( $FSL/mcflirt -reffile ${out}epi_${frame} -in ${out}epi -plots )
+				set cmd = ( $FSL/mcflirt -reffile ${out}epi_${ref} -in ${out}epi -plots )
 				set cmd = ( $cmd -rmsrel -rmsabs -mats -out ${out}mcf )
 				echo $cmd |& tee -a $log; $cmd |& tee -a $log
 			endif
@@ -443,7 +443,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 		
 		#Apply motion correction
 		set cmd = ( $FSL/applywarp -i $tmp -o ${tmp}_mcf_undist -r ${out}epi --abs $mask )
-		set cmd = ( $cmd -w ${out}epi_${frame}_undist_shift_warp --premat=$pre --interp=spline )
+		set cmd = ( $cmd -w ${out}epi_${ref}_undist_shift_warp --premat=$pre --interp=spline )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		@ k++
 	end
@@ -453,8 +453,9 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( rm ${out}epi_tmp* ); echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 else
+	#Apply shift map to whole series. Assumes series has already been aligned.
 	set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_undist --unwarpdir=$dir )
-	set cmd = ( $cmd -i ${out}epi --mask=${out}mag_brain_mask_to_${outroot}epi_${frame}_brain )
+	set cmd = ( $cmd -i ${out}epi --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
