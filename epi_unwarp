@@ -14,7 +14,7 @@ endif
 #######
 
 set program = $0:t
-if ($#argv == 0) then
+if ( $#argv == 0 ) then
 	echo ""
 	echo "${program}: A basic wrapper for FSL's field map tools."
 	echo ""
@@ -138,33 +138,33 @@ end
 #############################
 
 #Check to make sure all required options have been set
-if ( $?mag == 0 || $?epi == 0 || $?phase == 0  || $?dwell == 0 || $?te == 0 || $?delta == 0  ) then
+if ( $?mag == 0 || $?epi == 0 || $?phase == 0  || $?dwell == 0 || $?te == 0 || $?delta == 0 ) then
 	echo "Missing required arguments. See usage"
 	exit 1
 endif
 
 #Set defaults
-if ($?ref == 0)	set ref = 0; 
-if ($?outdir == 0) set outdir = "unwarp"
-if (! -d $outdir)	mkdir $outdir
-if ($?outroot == 0)	set outroot = ""
-if ($?thresh == 0)	set thresh = 0.9
-if ($?reg == 0) set reg = "despike"
-if ($reg == "despike" && $?dthresh == 0) set dthresh = 2.1
-if ($reg == "smooth" && $?mm3 == 0) set mm3 = 5
-if ($?dir == 0) set dir = "y-"
-if ($?epibet == 0 ) set epibet = .2
-if ($?magbet == 0 ) set magbet = .3
+if ( $?ref == 0 )	set ref = 0; 
+if ( $?outdir == 0 ) set outdir = "unwarp"
+if ( ! -d $outdir )	mkdir $outdir
+if ( $?outroot == 0 )	set outroot = ""
+if ( $?thresh == 0 )	set thresh = 0.9
+if ( $?reg == 0 ) set reg = "despike"
+if ( $reg == "despike" && $?dthresh == 0 ) set dthresh = 2.1
+if ( $reg == "smooth" && $?mm3 == 0 ) set mm3 = 5
+if ( $?dir == 0 ) set dir = "y-"
+if ( $?epibet == 0 ) set epibet = .2
+if ( $?magbet == 0 ) set magbet = .3
 
 #Check to make sure -reg is set correctly
-set reg_options = ( "smooth" "median" "none" "despike"); echo $reg_options | grep -qw $reg;
+set reg_options = ( "smooth" "median" "none" "despike" ); echo $reg_options | grep -qw $reg;
 if ( $? == 1 ) then
 	echo "-reg option $reg not known. See usage"
 	exit 1
 endif
 
 #Check to see if -dir is set correctly
-set dir_options = ( "x" "x-" "y" "y-" "z" "z-"); echo $dir_options | grep -qw $dir;
+set dir_options = ( "x" "x-" "y" "y-" "z" "z-" ); echo $dir_options | grep -qw $dir;
 if ( $? == 1 ) then
 	echo "-dir option $dir not known. See usage"
 	exit 1
@@ -219,7 +219,7 @@ if ( $?meanmap == 0 ) then
 	if ( $range[1] == -4096.000000 && $range[2] == 4092.000000 ) then
 		set cmd = ( $FSL/fslmaths ${pout} -div 4096 -mul 3.14159265 ${pout}_rad -odt float )
 	else if ( $range[1] == 0.000000 && $range[2] == 4094.000000 ) then
-		set cmd = ( $FSL/fslmaths ${pout} -sub 2047 -div 2047 -mul 3.14159265 ${pout}_rad _
+		set cmd = ( $FSL/fslmaths ${pout} -sub 2047 -div 2047 -mul 3.14159265 ${pout}_rad )
 		set cmd = ( $cmd -odt float )
 	else if ( $range[1] == 0.000000 && $range[2] == 4095.000000 ) then
 		set cmd = ( $FSL/fslmaths ${pout} -sub 2047.5 -div 2047.5 -mul 3.14159265 ${pout}_rad )
@@ -256,8 +256,8 @@ set cmd = ( $FSL/fslmaths ${pout} -abs -bin -mas ${out}mag_brain_mask -mul -1 -a
 set cmd = ( $cmd -bin ${pout}_inv_brain_mask ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		 
 #Cluster inverted brain mask
-set cmd = ( $FSL/cluster -i ${pout}_inv_brain_mask -t 0.5 --no_table -o ${pout}_inv_brain_mask_clust )
-echo $cmd |& tee -a $log; $cmd |& tee -a $log
+set cmd = ( $FSL/cluster -i ${pout}_inv_brain_mask -t 0.5 --no_table )
+set cmd = ( $cmd -o ${pout}_inv_brain_mask_clust ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		
 #Save intensity of largest cluster 
 set max = `$FSL/fslstats ${pout}_inv_brain_mask_clust -R | awk '{print $2}'`
@@ -307,7 +307,8 @@ switch ($reg)
 		set cmd = ( $cmd --savefmap=${filter} )
 		breaksw
 	case "median":
-		set cmd = ( $FSL/fugue --loadfmap=${pout} --mask=${out}mag_brain_mask -m --savefmap=${filter} )
+		set cmd = ( $FSL/fugue --loadfmap=${pout} --mask=${out}mag_brain_mask -m )
+		set cmd = ( $cmd --savefmap=${filter} )
 		breaksw
 	case "none":
 		set cmd = ( $FSL/imcp ${pout} $filter )
@@ -414,7 +415,8 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 		set mask = "--mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain"
 	endif
 	
-	set cmd = ( $FSL/fslsplit ${out}epi ${out}epi_tmp ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSL/fslsplit ${out}epi ${out}epi_tmp )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set vols = `$FSL/fslval ${out}epi dim4`; @ k = 0
 	while ( $k < $vols )
 		set num = `printf "%04d" $k`; set tmp = ${out}epi_tmp${num}
