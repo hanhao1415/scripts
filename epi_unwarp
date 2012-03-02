@@ -44,7 +44,7 @@ if ( $#argv == 0 ) then
 	echo "	-boldmc 		Use FSL to motion correct bold input. Will only resample once."
 	echo "	-meanmap 		Turn off conversion to radians/sec and phase unwrapping."
 	echo "	-nounwrap 		Turn off phase unwrapping."
-	echo " 	-nomask 		Do not use mask when applying motion correction."
+	echo " 	-nomask 		Do not use brain mask when applying to 4D series."
 	echo " 	-dil 			Dilate magnitude brain mask before applying shift map to EPI."
 	echo "	-debug			Turn on set echo."
 	echo ""
@@ -122,7 +122,7 @@ while ($#argv > 0)
 		case -nounwrap:
 			set nounwrap = 1; breaksw
 		case -nomask:
-			set nomask = 1; breaksw
+			set mask = ""; breaksw
 		case -dil:
 			set dil = 1; breaksw
 		case -debug:
@@ -405,16 +405,9 @@ echo $cmd |& tee -a $log; $cmd |& tee -a $log
 ###################
 #Motion Correction#
 ###################
+if ( $?mask == 0 ) set mask = "--mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain"
 
 if ( $?dtimc == 1  || $?boldmc == 1 ) then
-	
-	#Setup mask if not already done
-	if ( $?nomask == 1 ) then
-		set mask = ""
-	else
-		set mask = "--mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain"
-	endif
-	
 	set cmd = ( $FSL/fslsplit ${out}epi ${out}epi_tmp )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set vols = `$FSL/fslval ${out}epi dim4`; @ k = 0
@@ -440,7 +433,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 		endif
 		
 		#Apply motion correction
-		set cmd = ( $FSL/applywarp -i $tmp -o ${tmp}_mcf_unwarp -r ${out}epi --abs $mask )
+		set cmd = ( $FSL/applywarp -i $tmp -o ${tmp}_mcf_unwarp -r ${out}epi_${ref} --abs $mask )
 		set cmd = ( $cmd -w ${out}epi_${ref}_unwarp_shift_warp --premat=$pre --interp=spline )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		@ k++
@@ -451,9 +444,9 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( rm ${out}epi_tmp* ); echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 else
-	#Apply shift map to whole series. Assumes series has already been aligned.
-	set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_unwarp --unwarpdir=$dir )
-	set cmd = ( $cmd -i ${out}epi --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
+	#Apply shift warp to whole series. Assumes series has already been aligned.
+	set cmd = ( $FSL/applywarp -i ${out}epi -o ${out}epi_unwarp -r ${out}epi --abs $mask )
+	set cmd = ( $cmd -w ${out}epi_${ref}_unwarp_shift_warp --interp=spline )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
