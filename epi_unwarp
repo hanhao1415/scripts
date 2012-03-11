@@ -47,6 +47,7 @@ if ( $#argv == 0 ) then
 	echo "	-meanmap 		Turn off conversion to radians/sec and phase unwrapping."
 	echo "	-nounwrap 		Turn off phase unwrapping."
 	echo " 	-nomask 		Do not use brain mask when applying to 4D series."
+	echo "	-no4D			Do not apply to whole 4D series. Overridden by -bold or -dtimc."
 	echo " 	-dil 			Dilate magnitude brain mask before applying shift map to EPI."
 	echo "	-debug			Turn on set echo."
 	echo ""
@@ -133,6 +134,8 @@ while ($#argv > 0)
 			set nounwrap = 1; breaksw
 		case -nomask:
 			set mask = ""; breaksw
+		case -no4d:
+			set no4d = 1; breaksw
 		case -dil:
 			set dil = 1; breaksw
 		case -debug:
@@ -207,7 +210,7 @@ echo "" |& tee -a $log
 #If post is set, get pout from log file and move on
 if ( $?post == 1 ) then
 	set pout = $outdir/`awk '/Phase Processing Root:/{print $4}' $post/epi_unwarp.log`
-	ln -s $post/* $out/
+	ln -s $post/* $outdir/
 	goto POST
 endif
 
@@ -463,7 +466,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	set cmd = ( $FSL/fslmerge -t ${out}epi_mcf_unwarped ${out}epi_tmp*_mcf_unwarp.nii.gz )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( rm ${out}epi_tmp* ); echo $cmd |& tee -a $log; $cmd |& tee -a $log	
-else
+else if ( $?no4d == 0 ) then
 	#Apply shift warp to whole series. Assumes series has already been aligned.
 	set cmd = ( $FSL/applywarp -i ${out}epi -o ${out}epi_unwarped -r ${out}epi --abs $mask )
 	set cmd = ( $cmd -w ${out}epi_${ref}_unwarp_shift_warp --interp=spline )
