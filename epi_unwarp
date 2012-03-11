@@ -40,6 +40,8 @@ if ( $#argv == 0 ) then
 	echo " 	-dir <dir> 		EPI phase encoding direction. Takes x,x-,y,y-,z,z-. Default is y-."
 	echo "	-epibet <epibet> 	BET fractional intensity threshold for EPI. Default is .2."
 	echo "	-magbet <magbet> 	BET fractional intensity threshold for magnitude image. Default is .3."
+	echo "	-post	<dir>		Apply field map based upon the results of <dir>. Must supply full path"
+	echo "	-pre			Only run field map preprocessing."
 	echo "	-dtimc 			Use FSL to motion correct dti input. Will only resample once."
 	echo "	-boldmc 		Use FSL to motion correct bold input. Will only resample once."
 	echo "	-meanmap 		Turn off conversion to radians/sec and phase unwrapping."
@@ -113,6 +115,14 @@ while ($#argv > 0)
 			set epibet = $argv[1]; shift; breaksw
 		case -magbet:
 			set magbet = $argv[1]; shift; breaksw
+		case -post:
+			if ( ! -e $argv[1]/${program}.log ) then
+				echo "Directory $argv[1] does not have an ${program}.log file. Exiting..."
+				exit 1
+			endif
+			set post = $argv[1]; shift; breaksw
+		case -pre:
+			set pre = 1; breaksw
 		case -dtimc:
 			set dtimc = 1; breaksw
 		case -boldmc:
@@ -136,7 +146,6 @@ end
 #############################
 #Check options, set defaults#
 #############################
-
 #Check to make sure all required options have been set
 if ( $?mag == 0 || $?epi == 0 || $?phase == 0  || $?dwell == 0 || $?te == 0 || $?delta == 0 ) then
 	echo "Missing required arguments. See usage"
@@ -170,10 +179,13 @@ if ( $? == 1 ) then
 	exit 1
 endif
 
-
 #Create log file
 set out = $outdir/$outroot; set pout = ${outdir}/${outroot}phase
-set log = $outdir/${program}.log
+if ( $?post == 1 ) then
+	set log = ${outdir}/${program}_post.log
+else
+	set log = $outdir/${program}.log
+endif
 echo "" |& tee $log
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
@@ -192,6 +204,12 @@ echo "" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "" |& tee -a $log
+#If post is set, get pout from log file and move on
+if ( $?post == 1 ) then
+	set pout = $outdir/`awk '/Phase Processing Root:/{print $4}' $post/epi_unwarp.log`
+	ln -s $post/* $out/
+	goto POST
+endif
 
 #####################################
 #Preproc, Unit Conversion, Unwraping#
@@ -332,7 +350,9 @@ echo $cmd |& tee -a $log; $cmd |& tee -a $log
 #Multiply mag brain by signal loss image. Will result in a mag brain with areas of signal loss.
 set cmd = ( $FSL/fslmaths ${out}signal_loss -mul ${out}mag_brain ${out}mag_brain_signal_lossed )
 set cmd = ( $cmd -odt float ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
+if ( $?pre == 1 ) goto EXIT
 
+POST:
 #####################################
 #FUGUE, Registration, Transformation#
 #####################################
@@ -391,8 +411,8 @@ if ( $?dil == 1 ) then
 endif
 
 #Run fugue using the registerted field map on the distorted epi. 
-#Will unwarport the epi reference frame and save the shift map that does this.
-set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${ref}_unwarp )
+#Will unwarp the epi reference frame and save the shift map that does this.
+set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${ref}_unwarped )
 set cmd = ( $cmd  -i ${out}epi_${ref} --saveshift=${out}epi_${ref}_unwarp_shift )
 set cmd = ( $cmd --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain --unwarpdir=$dir )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -440,21 +460,23 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	end
 		
 	#Merge the split, corrected frames
-	set cmd = ( $FSL/fslmerge -t ${out}epi_mcf_unwarp ${out}epi_tmp*_mcf_unwarp.nii.gz )
+	set cmd = ( $FSL/fslmerge -t ${out}epi_mcf_unwarped ${out}epi_tmp*_mcf_unwarp.nii.gz )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( rm ${out}epi_tmp* ); echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 else
 	#Apply shift warp to whole series. Assumes series has already been aligned.
-	set cmd = ( $FSL/applywarp -i ${out}epi -o ${out}epi_unwarp -r ${out}epi --abs $mask )
+	set cmd = ( $FSL/applywarp -i ${out}epi -o ${out}epi_unwarped -r ${out}epi --abs $mask )
 	set cmd = ( $cmd -w ${out}epi_${ref}_unwarp_shift_warp --interp=spline )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
+EXIT:
 echo "" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "" |& tee -a $log
 echo "${program} is DONE" |& tee -a $log
+echo "Phase Processing Root: ${pout:t}" |& tee -a $log
 echo "End Time: `date '+%Y-%m-%d-%I-%M-%S'`" |& tee -a $log
 echo "" |& tee -a $log
 echo "#######################################" |& tee -a $log
