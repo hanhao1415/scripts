@@ -47,7 +47,7 @@ if ( $#argv == 0 ) then
 	echo "	-meanmap 		Turn off conversion to radians/sec and phase unwrapping."
 	echo "	-nounwrap 		Turn off phase unwrapping."
 	echo " 	-nomask 		Do not use brain mask when applying to 4D series."
-	echo "	-no4D			Do not apply to whole 4D series. Overridden by -bold or -dtimc."
+	echo "	-no4d			Do not apply to whole 4D series. Overridden by -bold or -dtimc."
 	echo " 	-dil 			Dilate magnitude brain mask before applying shift map to EPI."
 	echo "	-debug			Turn on set echo."
 	echo ""
