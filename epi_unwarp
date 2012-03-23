@@ -43,6 +43,7 @@ if ( $#argv == 0 ) then
 	echo "	-dtimc 			Use FSL to motion correct dti input. Will only resample once."
 	echo "	-boldmc 		Use FSL to motion correct bold input. Will only resample once."
 	echo "	-meanmap 		Turn off conversion to radians/sec and phase unwrapping."
+	echo "	-nopreproc		Turn off all phase map preprocessing."
 	echo "	-nounwrap 		Turn off phase unwrapping."
 	echo " 	-nomask 		Do not use mask when applying motion correction."
 	echo " 	-dil 			Dilate magnitude brain mask before applying shift map to EPI."
@@ -119,6 +120,8 @@ while ($#argv > 0)
 			set boldmc = 1; breaksw	
 		case -meanmap:
 			set meanmap = 1; breaksw
+		case -nopreproc:
+			set nopreproc =1; breaksw
 		case -nounwrap:
 			set nounwrap = 1; breaksw
 		case -nomask:
@@ -392,7 +395,7 @@ endif
 
 #Run fugue using the registerted field map on the distorted epi. 
 #Will unwarport the epi reference frame and save the shift map that does this.
-set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${ref}_unwarp )
+set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_${ref}_unwarped )
 set cmd = ( $cmd  -i ${out}epi_${ref} --saveshift=${out}epi_${ref}_unwarp_shift )
 set cmd = ( $cmd --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain --unwarpdir=$dir )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -447,12 +450,12 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 	end
 		
 	#Merge the split, corrected frames
-	set cmd = ( $FSL/fslmerge -t ${out}epi_mcf_unwarp ${out}epi_tmp*_mcf_unwarp.nii.gz )
+	set cmd = ( $FSL/fslmerge -t ${out}epi_mcf_unwarp ${out}epi_tmp*_mcf_unwarped.nii.gz )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( rm ${out}epi_tmp* ); echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 else
 	#Apply shift map to whole series. Assumes series has already been aligned.
-	set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_unwarp --unwarpdir=$dir )
+	set cmd = ( $FSL/fugue --loadfmap=${pout} --dwell=$dwell -u ${out}epi_unwarped --unwarpdir=$dir )
 	set cmd = ( $cmd -i ${out}epi --mask=${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif

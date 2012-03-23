@@ -222,6 +222,11 @@ endif
 while ( $count <= 2 )
 	#Use FSL for within run motion correction
 	if ( ! -e  ${pout}_${count}_mcf.nii.gz ||  $?force == 1 ) then
+		#Delete old results directory if present
+		if ( -d ${pout}_${count}_mcf.mat ) then
+			set cmd = ( rm -r ${pout}_${count}_mcf.mat )
+			echo $cmd |& tee -a $log; $cmd |& tee -a $log
+		endif
 		set cmd = ( $FSLDIR/bin/mcflirt -in ${pout}_${count} -mats -plots -rmsrel -rmsabs -refvol 0 )
 		set cmd = ( $cmd -out ${pout}_${count}_mcf -cost mutualinfo )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -395,10 +400,17 @@ if ( ! -e ${aout}_free_to_MNI152.mat || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
+#Use FSL to invert linear transformation from T1->MNI152
+if ( ! -e ${aout}_MNI152_to_free.mat || $?force == 1 ) then 
+        set cmd = ( $FSLDIR/bin/convert_xfm -omat ${aout}_MNI152_to_free.mat )
+        set cmd = ( $cmd -inverse ${aout}_free_to_MNI152.mat )
+        echo $cmd |& tee -a $log; $cmd |& tee -a $log 
+endif
+
 #Use FSL to do a nonlinear registration between T1 and MNI152
 if ( ! -e ${aout}_free_to_MNI152_coef.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSLDIR/bin/fnirt --in=${aout}_T1 --aff=${aout}_free_to_MNI152.mat )
-	set cmd = ( $cmd --config=T1_2_MNI152_2mm.cnf --cout=${aout}_free_to_MNI152_coef --verbose )
+	set cmd = ( $cmd --config=T1_2_MNI152_2mm_mod.cnf --cout=${aout}_free_to_MNI152_coef --verbose )
 	set cmd = ( $cmd --jout=${aout}_free_to_MNI152_jac )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
@@ -458,7 +470,7 @@ set cdir = $outdir/cbf; if ( ! -d $cdir ) mkdir $cdir; set cout = $cdir/$root
 
 #Get partial volume maps
 if ( ! -e ${cout}_brain_cut_pve_0.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSLDIR/bin/fast -g -b -B -p -o ${cout}_brain_cut ${aout}_brain_cut )
+	set cmd = ( $FSLDIR/bin/fast -g -b -B -p -a ${aout}_free_to_MNI152.mat -o ${cout}_brain_cut ${aout}_brain_cut )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
 
