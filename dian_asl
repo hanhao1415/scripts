@@ -443,7 +443,7 @@ endif
 
 #Calculate uncorrected cbf	
 if ( ! -e ${cout}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( cbf_calc.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
+	set cmd = ( python cbf_calc.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
 	set cmd = ( $cmd ${pout}_mask.nii.gz ${cout} $out4d $unfilt )
 	set cmd = ( $cmd -mthresh $mthresh -sthresh $sthresh -minTR 3400.0 -TI2 1900 )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
@@ -451,7 +451,7 @@ endif
 
 #Run a regression based partial volume correction
 if ( ! -e ${cout}_pvc${kernel}_mgm.nii.gz || $?force == 1 ) then
-	set cmd = ( lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
+	set cmd = ( python lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
 	set cmd = ( $cmd ${pout}_mask.nii.gz ${cout}_rawavg_masked_pve_0_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_rawavg_masked_pve_1_to_asl.nii.gz  ${cout}_rawavg_masked_pve_2_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_pvc${kernel} $nocsf -kernel $kernel)
@@ -460,7 +460,7 @@ endif
 
 #Calculate corrected cbf
 if ( ! -e ${cout}_pvc${kernel}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz ${cout}_pvc${kernel}_mgm.nii.gz )
+	set cmd = ( python cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz ${cout}_pvc${kernel}_mgm.nii.gz )
 	set cmd = ( $cmd ${pout}_mask.nii.gz ${cout}_pvc${kernel} )
 	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh -minTR 3400.0 -TI2 1900 )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log		
