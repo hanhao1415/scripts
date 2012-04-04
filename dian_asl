@@ -114,7 +114,7 @@ endif
 
 #Check to see subject is within SUBJECTS_DIR
 if ( ! -e $SUBJECTS_DIR/$subj ) then
-	echo "Cannot find Subject: $subject within SUBJECTS_DIR: $SUBJECTS_DIR"
+	echo "Cannot find Subject: $subj within SUBJECTS_DIR: $SUBJECTS_DIR"
 	exit 1
 endif
 
