@@ -171,14 +171,14 @@ set pdir = $outdir/asl; if ( ! -d $pdir ) mkdir $pdir; set pout = $pdir/${root}_
 if ( ! -e ${pout}_mcf_unwarped_masked.nii.gz || ! -e ${pout}_mask.nii.gz || $?force == 1 ) then
 	#Distortion and Motion Correction
 	set cmd = ( epi_unwarp -m $mag -p $phase -e $asl -te 12 -dwell .49 -delta 2.46 )
-	set cmd = ( $cmd -r $root -boldmc -o $outdir/unwarp -epibet $bthresh )
+	set cmd = ( $cmd -r $root -boldmc -o $pdir -epibet $bthresh )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
-	#Copy over undistorted image
-	set cmd = ( $FSL/imcp $outdir/unwarp/${root}_epi_mcf_unwarped ${pout}_mcf_unwarped_masked )
+	#Rename undistorted image
+	set cmd = ( $FSL/immv $pdir/${root}_epi_mcf_unwarped ${pout}_mcf_unwarped_masked )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
-	#Copy over mask
-	set cmd = ( $FSL/imcp $outdir/unwarp/${root}_mag_brain_mask_to_${root}_epi_0_brain )
-	set cmd = ( $cmd ${pout}_mask ); echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	#Rename mask
+	set cmd = ( $FSL/immv $pdir/${root}_mag_brain_mask_to_${root}_epi_0_brain ${pout}_mask )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
 set pout = ${pout}_mcf_unwarped_masked
 
@@ -212,7 +212,7 @@ end
 if ( ! -e ${aout}_free_to_std.mat || $?force == 1 ) then
 	set cmd = ( $FREE/tkregister2 --mov ${aout}_T1.nii.gz --targ ${aout}_T1_std.nii.gz )
   	set cmd =  ($cmd --regheader --noedit --fslregout ${aout}_free_to_std.mat )
-  	set cmd = ( $cmd --reg ${aout}_std_to_free_reg )
+  	set cmd = ( $cmd --reg ${aout}_std_to_free.reg )
   	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -316,7 +316,7 @@ endif
 #Use FSL to do a nonlinear registration between T1 and MNI152
 if ( ! -e ${aout}_free_to_MNI152_coef.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSL/fnirt --in=${aout}_T1 --aff=${aout}_free_to_MNI152.mat --verbose )
-	set cmd = ( $cmd --config=T1_2_MNI152_2mm_mod.cnf )
+	set cmd = ( $cmd --config=/home/tblazey/scripts/T1_2_MNI152_2mm_mod.cnf )
 	set cmd = ( $cmd --jout=${aout}_free_to_MNI152_jac --cout=${aout}_free_to_MNI152_coef )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
