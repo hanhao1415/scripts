@@ -18,7 +18,7 @@ if ( $#argv == 0 ) then
 	echo ""
 	echo "${program}: A basic processing script for ACS ASL"
 	echo ""
-	echo "Usage:"
+	echo "Usage: ${program} -r1 <asl1> -r2 <asl2> -tse <tse> -sub <subj> [options]"
 	echo ""
 	echo "Required Arguments:"
 	echo "	-r1: <asl1>		First ASL run."
@@ -28,20 +28,20 @@ if ( $#argv == 0 ) then
 	echo ""
 	echo "Optional Arguments:"
 	echo "	-root: <root>		Root for outputed files. Default is FreeSurfer Subject ID."
-	echo "	-outdir: <outdir>	Output directory. Default is <root>."
+	echo "	-outdir: <dir>	Output directory. Default is <root>."
 	echo '	-subjdir: <dir>		Set FreeSurfer subjects directory. Default is current $SUBJECTS_DIR.'
 	echo "	-mthresh: <thresh>	Threshold for mean perfusion outliers. Default is 2.5."
 	echo "	-sthresh: <thresh>	Threshold for standard deviation perfusion outliers. Default is 1.5"
 	echo "	-bthresh <thresh>	Threshold for BET masking. Default is 0.4."
 	echo "	-gthresh: <thresh>	Threshold for gray matter mask. Default is .3"
 	echo "	-kernel: <kernel>	Size of regression kernel for partial volume correction. Default is 5.0."
-	echo "	-fwhm: <fwhm>		FWHM for atlas smoothing. Default is 5."	
+	echo "	-fwhm: <fwhm>		FWHM for smoothing. Default is 5."	
 	echo "	-simple:		Do simple subtraction. Default is sinc."
 	echo "	-unfilt: 		Output CBF data with and without outlier removal."
 	echo "	-nocsf: 		Assume that there is no perfusion in CSF for partial volume correction."
 	echo "	-out4d:			Output a 4d cbf image."	
 	echo "	-force: 		Run command even if output exists."
-	echo "	-debug			Turn on set echo."
+	echo "	-debug:			Turn on set echo."
 	echo ""
 	echo "Note: Script requires FSL, FreeSurfer, Numpy, and Nibabel"
 	exit
@@ -313,7 +313,7 @@ end
 
 #Use FreeSurfer to get a reorientation to MNI standard matrix
 if ( ! -e ${aout}_free_to_std.mat || $?force == 1 ) then
-	set cmd = ( $FREESURFER_HOME/tkregister2 --mov ${aout}_T1.nii.gz --targ ${aout}_T1_std.nii.gz )
+	set cmd = ( $FREE/tkregister2 --mov ${aout}_T1.nii.gz --targ ${aout}_T1_std.nii.gz )
   	set cmd =  ($cmd --regheader --noedit --fslregout ${aout}_free_to_std.mat )
   	set cmd = ( $cmd --reg ${aout}_std_to_free_reg )
   	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -321,15 +321,16 @@ endif
 
 #Use FreeSurfer to get a transformation for conformed to native space
 if ( ! -e ${aout}_cnf_to_ntv.mat || $?force == 1 ) then
-	set cmd = ( $FREESURFER_HOME/tkregister2 --mov $SUBJECTS_DIR/$subj/mri/orig.mgz --regheader )
+	set cmd = ( $FREE/tkregister2 --mov $SUBJECTS_DIR/$subj/mri/orig.mgz --regheader )
 	set cmd = ( $cmd --reg ${aout}_cnf_to_ntv.reg --fslregout ${aout}_cnf_to_ntv.mat --noedit )
+	set cmd = ( $cmd --targ $SUBJECTS_DIR/$subj/mri/rawavg.mgz )
   	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 #Use FSL to invert conformted -> native transform
 if ( ! -e ${aout}_ntv_to_cnf.mat || $?force == 1 ) then
 	set cmd = ( $FSL/convert_xfm -omat ${aout}_ntv_to_cnf.mat -inverse ${aout}_cnf_to_ntv.mat )
-	echo $cmd |& tee -a $log; $cmd |& tee -a $l
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 #Use Freesurfer to get more agressive masking
@@ -359,8 +360,8 @@ endif
 
 #Use FSL to mask native space image
 if ( ! -e ${aout}_rawavg_masked.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSL/fslmaths ${aout}_rawavg -mas  ${aout}_brain_cut_mask_to_ntv )
-	set cmd = ( $cmd {aout}_rawavg_masked ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSL/fslmaths ${aout}_rawavg -mas ${aout}_brain_cut_mask_to_ntv )
+	set cmd = ( $cmd ${aout}_rawavg_masked ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 #Register ASL to FreeSurfer T1
@@ -508,7 +509,7 @@ endif
 foreach pve ( 0 1 2 )
 	if ( ! -e ${cout}_rawavg_masked_pve_${pve}_to_asl.nii.gz || $?force == 1 ) then
 		set cmd = ( $FSL/applywarp --in=${cout}_rawavg_masked_pve_${pve} --super --interp=spline )
-		set cmd = ( $cmd --ref=${pout}_col_mc_m0_brain --superlevel=4 --premat=${aout}_cnf_to_ntv.mat )
+		set cmd = ( $cmd --ref=${pout}_col_mc_m0_brain --superlevel=4 --premat=${aout}_ntv_to_cnf.mat )
 		set cmd = ( $cmd --postmat=${aout}_free_to_asl.mat --mask=${aout}_brain_cut_mask_to_asl )
 		set cmd = ( $cmd --out=${cout}_rawavg_masked_pve_${pve}_to_asl )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
@@ -551,7 +552,7 @@ if ( ! -e ${cout}_perf.nii.gz || $?force == 1 ) then
 	
 	if ( $?simple == 0 ) then
 		#Do sinc subtraction by shifting the tags forward
-		set cmd = ( $FSL/slicetimer -i ${cout}_t -o ${cout}_t_sinc --tglobal=1.0 )				   			   
+		set cmd = ( $FSL/slicetimer -i ${cout}_t -o ${cout}_t_sinc --tglobal=0.5 )				   			   
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 		
 		#Subtract to generate perfusion image
