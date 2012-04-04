@@ -554,7 +554,7 @@ end
 set qdir = $outdir/qa; if ( ! -d $qdir ) mkdir $qdir; set qout = $qdir/${root}
 
 #Use FSL to create Rotation plot
-set mpar = $outdir/unwarp/${root}_mcf
+set mpar = $pdir/${root}_mcf
 if ( ! -e ${qout}_rot.png || $?force == 1 ) then	
 	set cmd = ( $FSL/fsl_tsplot -i ${mpar}.par -w 640 -h 144 ) 
 	set cmd = ( $cmd -a x,y,z -u 1 --start=1 --finish=3 -o ${qout}_rot.png )
