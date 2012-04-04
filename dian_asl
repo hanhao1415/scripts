@@ -461,8 +461,7 @@ if ( ! -e ${cout}_pvc${kernel}_cbf_avg.nii.gz ||  $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log		
 endif
 
-foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_cbf_var \
-			  ${cout}_cbf_var ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg )
+foreach cbf (  ${cout}_pvc${kernel}_cbf_var ${cout}_cbf_var ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg )
 	
 	#Transform cbf to Freesurfer subject volume
 	if ( ! -e ${cbf}_to_free.nii.gz || $?force == 1 ) then
@@ -512,7 +511,7 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 										 		
-	#Get stats from Freesurfer segmentations
+	#Get filtered stats from Freesurfer segmentations
 	if ( ( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
 			&& ( ! -e ${cbf}_stats.txt || $?force == 1 )) then
 		set cmd = ( $FREE/mri_segstats --i ${cbf}_to_free.nii.gz )
@@ -521,7 +520,17 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		set cmd = ( $cmd --mask ${cbf}_outlier_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
-		
+	
+	#Get unfiltered stats from FreeSurfer segmentations
+	if ( ( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
+			&& ( ! -e ${cbf}_stats_unfilt.txt || $?force == 1 )) then
+		set cmd = ( $FREE/mri_segstats --i ${cbf}_to_free.nii.gz --sum ${cbf}_stats_unfilt.txt )
+		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt )
+		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subj}/mri/aparc+aseg.mgz )
+		set cmd = ( $cmd --mask ${cbf}_defined_mask.nii.gz )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	endif
+	
 	foreach hemi ( lh rh )
 		
 		#Transform to fsaverage space
