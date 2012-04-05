@@ -40,8 +40,7 @@ if ( $#argv == 0 ) then
 	echo " 	-dir <dir> 		EPI phase encoding direction. Takes x,x-,y,y-,z,z-. Default is y-."
 	echo "	-epibet <epibet> 	BET fractional intensity threshold for EPI. Default is .2."
 	echo "	-magbet <magbet> 	BET fractional intensity threshold for magnitude image. Default is .3."
-	echo "	-post	<dir>		Apply field map based upon the results of <dir>. Must supply full path"
-	echo "	-pre			Only run field map preprocessing."
+	echo "	-cost <cost>		Cost function for -boldmc. Default is normcorr."
 	echo "	-dtimc 			Use FSL to motion correct dti input. Will only resample once."
 	echo "	-boldmc 		Use FSL to motion correct bold input. Will only resample once."
 	echo "	-meanmap 		Turn off conversion to radians/sec and phase unwrapping."
@@ -117,14 +116,8 @@ while ($#argv > 0)
 			set epibet = $argv[1]; shift; breaksw
 		case -magbet:
 			set magbet = $argv[1]; shift; breaksw
-		case -post:
-			if ( ! -e $argv[1]/${program}.log ) then
-				echo "Directory $argv[1] does not have an ${program}.log file. Exiting..."
-				exit 1
-			endif
-			set post = $argv[1]; shift; breaksw
-		case -pre:
-			set pre = 1; breaksw
+		case -cost:
+			set cost = $argv[1]; shift; breaksw		
 		case -dtimc:
 			set dtimc = 1; breaksw
 		case -boldmc:
@@ -170,6 +163,7 @@ if ( $reg == "smooth" && $?mm3 == 0 ) set mm3 = 5
 if ( $?dir == 0 ) set dir = "y-"
 if ( $?epibet == 0 ) set epibet = .2
 if ( $?magbet == 0 ) set magbet = .3
+if ( $?cost == 0 ) set cost = "normcorr"
 
 #Check to make sure -reg is set correctly
 set reg_options = ( "smooth" "median" "none" "despike" ); echo $reg_options | grep -qw $reg;
@@ -187,11 +181,7 @@ endif
 
 #Create log file
 set out = $outdir/$outroot; set pout = ${outdir}/${outroot}phase
-if ( $?post == 1 ) then
-	set log = ${outdir}/${program}_post.log
-else
-	set log = $outdir/${program}.log
-endif
+set log = $outdir/${program}.log
 echo "" |& tee $log
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
@@ -210,12 +200,6 @@ echo "" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "" |& tee -a $log
-#If post is set, get pout from log file and move on
-if ( $?post == 1 ) then
-	set pout = $outdir/`awk '/Phase Processing Root:/{print $4}' $post/epi_unwarp.log`
-	ln -s $post/* $outdir/
-	goto POST
-endif
 
 #####################################
 #Preproc, Unit Conversion, Unwraping#
@@ -356,9 +340,7 @@ echo $cmd |& tee -a $log; $cmd |& tee -a $log
 #Multiply mag brain by signal loss image. Will result in a mag brain with areas of signal loss.
 set cmd = ( $FSL/fslmaths ${out}signal_loss -mul ${out}mag_brain ${out}mag_brain_signal_lossed )
 set cmd = ( $cmd -odt float ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
-if ( $?pre == 1 ) goto EXIT
 
-POST:
 #####################################
 #FUGUE, Registration, Transformation#
 #####################################
@@ -452,7 +434,7 @@ if ( $?dtimc == 1  || $?boldmc == 1 ) then
 		else
 			if ( $k == 0 ) then
 				set cmd = ( $FSL/mcflirt -reffile ${out}epi_${ref} -in ${out}epi -plots )
-				set cmd = ( $cmd -rmsrel -rmsabs -mats -out ${out}mcf )
+				set cmd = ( $cmd -rmsrel -rmsabs -mats -out ${out}mcf -cost $cost )
 				echo $cmd |& tee -a $log; $cmd |& tee -a $log
 			endif
 			set pre = "${out}mcf.mat/MAT_${num}"
@@ -476,13 +458,11 @@ else if ( $?no4d == 0 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
-EXIT:
 echo "" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "#######################################" |& tee -a $log
 echo "" |& tee -a $log
 echo "${program} is DONE" |& tee -a $log
-echo "Phase Processing Root: ${pout:t}" |& tee -a $log
 echo "End Time: `date '+%Y-%m-%d-%I-%M-%S'`" |& tee -a $log
 echo "" |& tee -a $log
 echo "#######################################" |& tee -a $log

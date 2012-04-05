@@ -36,6 +36,7 @@ if ( $#argv == 0 ) then
 	echo "	-gthresh: <thrsh>	Threshold for gray matter mask. Default is .3"
 	echo "	-kernel: <kernel>	Size of regression kernel for partial volume correction. Default is 5.0."
 	echo "	-fwhm: <fwhm>		FWHM for smoothing. Default is 5."
+	echo "	-ped: <dir>		ASL phase encoding direction."
 	echo "	-simple: 		Do simple subtraction. Default is sinc."
 	echo "	-unfilt: 		Output CBF data with and without outlier removal."
 	echo "	-nocsf: 		Assume that there is no perfusion in CSF for partial volume correction."
@@ -48,7 +49,7 @@ if ( $#argv == 0 ) then
 endif
 
 #Set defaults
-set mthresh = 2.5; set fwhm = 5; set simple = 0;  set out4d = ""; set unfilt = "";
+set mthresh = 2.5; set fwhm = 5; set simple = 0;  set out4d = ""; set unfilt = ""; set ped = "y-"
 set kernel = 5; set nocsf = ""; set gthresh = 0.3; set sthresh = 1.5; set bthresh = 0.4
 
 #Parse arguments
@@ -86,7 +87,9 @@ while ( $#argv > 0 )
 		case -fwhm:
 			set fwhm = $argv[1]; shift; breaksw;
 		case -kernel:
-				set kernel = $argv[1]; shift; breaksw;
+			set kernel = $argv[1]; shift; breaksw;
+		case -ped:
+			set ped = $argv[1]; shift; breaksw;
 		case -simple:
 			set simple = 1; breaksw;
 		case -out4d:
@@ -171,7 +174,7 @@ set pdir = $outdir/asl; if ( ! -d $pdir ) mkdir $pdir; set pout = $pdir/${root}_
 if ( ! -e ${pout}_mcf_unwarped_masked.nii.gz || ! -e ${pout}_mask.nii.gz || $?force == 1 ) then
 	#Distortion and Motion Correction
 	set cmd = ( epi_unwarp -m $mag -p $phase -e $asl -te 12 -dwell .49 -delta 2.46 )
-	set cmd = ( $cmd -r $root -boldmc -o $pdir -epibet $bthresh )
+	set cmd = ( $cmd -r $root -boldmc -o $pdir -epibet $bthresh -dir $ped -cost mutualinfo )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	#Rename undistorted image
 	set cmd = ( $FSL/immv $pdir/${root}_epi_mcf_unwarped ${pout}_mcf_unwarped_masked )
@@ -209,11 +212,10 @@ foreach free_image ( $SUBJECTS_DIR/$subj/mri/brain.mgz $SUBJECTS_DIR/$subj/mri/T
 end
 
 #Use FSL to get a mask
-if ( ! -e ${aout}_brain.nii.gz || $?force == 1 ) then
+if ( ! -e ${aout}_brain_mask.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSL/fslmaths ${aout}_brain -bin ${aout}_brain_mask )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
-
 
 #Use FreeSurfer to get a reorientation to MNI standard matrix
 if ( ! -e ${aout}_free_to_std.mat || $?force == 1 ) then
@@ -288,7 +290,7 @@ endif
 #Convert Freesurfer->Asl to FreeSurfer Format
 if ( ! -e ${aout}_free_to_asl.reg || $?force == 1 ) then
 	set cmd = ( $FREE/tkregister2_cmdl --targ ${pout}_m0.nii.gz )
-	set cmd = ( $cmd --s $subj --mov ${aout}_brain_cut.nii.gz )
+	set cmd = ( $cmd --s $subj --mov ${aout}_brain.nii.gz )
 	set cmd = ( $cmd --fsl ${aout}_free_to_asl.mat --reg ${aout}_free_to_asl.reg )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
@@ -380,7 +382,7 @@ foreach pve ( 0 1 2 )
 	if ( ! -e ${cout}_rawavg_masked_pve_${pve}_to_asl.nii.gz || $?force == 1 ) then
 		set cmd = ( $FSL/applywarp --in=${cout}_rawavg_masked_pve_${pve} --super --interp=spline )
 		set cmd = ( $cmd --ref=${pout}_m0 --superlevel=4 --premat=${aout}_ntv_to_cnf.mat )
-		set cmd = ( $cmd --postmat=${aout}_free_to_asl.mat --mask=${pout}_mask )
+		set cmd = ( $cmd --postmat=${aout}_free_to_asl.mat --mask=$pdir/${root}_asl_mask )
 		set cmd = ( $cmd --out=${cout}_rawavg_masked_pve_${pve}_to_asl )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
@@ -422,7 +424,7 @@ if ( ! -e ${cout}_perf.nii.gz || $?force == 1 ) then
 	
 	if ( $?simple == 0 ) then
 		#Do sinc subtraction by shifting the tags forward
-		set cmd = ( $FSL/slicetimer -i ${cout}_t -o ${cout}_t_sinc --tglobal=0.5 )				   			   
+		set cmd = ( $FSL/slicetimer -i ${cout}_t -o ${cout}_t_sinc --tglobal=0.5 )				   		   
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 		
 		#Subtract to generate perfusion image
@@ -439,7 +441,7 @@ endif
 #Calculate uncorrected cbf	
 if ( ! -e ${cout}_cbf_avg.nii.gz ||  $?force == 1 ) then	
 	set cmd = ( python /home/tblazey/scripts/cbf_calc.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
-	set cmd = ( $cmd ${pout}_mask.nii.gz ${cout} $out4d $unfilt )
+	set cmd = ( $cmd $pdir/${root}_asl_mask.nii.gz ${cout} $out4d $unfilt )
 	set cmd = ( $cmd -mthresh $mthresh -sthresh $sthresh -minTR 3400.0 -TI2 1900 )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
@@ -447,7 +449,7 @@ endif
 #Run a regression based partial volume correction
 if ( ! -e ${cout}_pvc${kernel}_mgm.nii.gz || $?force == 1 ) then
 	set cmd = ( python /home/tblazey/scripts/lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
-	set cmd = ( $cmd ${pout}_mask.nii.gz ${cout}_rawavg_masked_pve_0_to_asl.nii.gz )
+	set cmd = ( $cmd $pdir/${root}_asl_mask.nii.gz ${cout}_rawavg_masked_pve_0_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_rawavg_masked_pve_1_to_asl.nii.gz  ${cout}_rawavg_masked_pve_2_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_pvc${kernel} $nocsf -kernel $kernel)
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
@@ -456,12 +458,12 @@ endif
 #Calculate corrected cbf
 if ( ! -e ${cout}_pvc${kernel}_cbf_avg.nii.gz ||  $?force == 1 ) then	
 	set cmd = ( python /home/tblazey/scripts/cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz )
-	set cmd = ( $cmd ${cout}_pvc${kernel}_mgm.nii.gz ${pout}_mask.nii.gz ${cout}_pvc${kernel} )
+	set cmd = ( $cmd ${cout}_pvc${kernel}_mgm.nii.gz $pdir/${root}_asl_mask.nii.gz ${cout}_pvc${kernel} )
 	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh -minTR 3400.0 -TI2 1900 )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log		
 endif
 
-foreach cbf (  ${cout}_pvc${kernel}_cbf_var ${cout}_cbf_var ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg )
+foreach cbf ( ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg ${cout}_pvc${kernel}_cbf_var ${cout}_cbf_var )
 	
 	#Transform cbf to Freesurfer subject volume
 	if ( ! -e ${cbf}_to_free.nii.gz || $?force == 1 ) then
@@ -605,6 +607,34 @@ if ( ! -e ${qout}_asl_brain_mask_qa.png || $?force == 1 ) then
 	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
 endif
 
+#Use FSl to get undistortion QA image
+if ( ! -e ${qout}_unwarp_qa.gif || ! -e ${qout}_unwarp_movie_qa.gif || $?force == 1 ) then
+	#Get distorted image
+	set cmd = ( $FSL/slicer $pdir/${root}_epi_0_brain $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSL/pngappend $appendopts ${qout}_unwarp_dist_qa.gif )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+
+	#Get undistorted image
+	set cmd = ( $FSL/slicer ${pout}_m0 $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSL/pngappend $appendopts ${qout}_unwarp_undist_qa.gif )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+
+	#Combine QA Images
+	set cmd = ( $FSL/pngappend ${qout}_unwarp_dist_qa.gif )
+	set cmd = ( $cmd - ${qout}_unwarp_undist_qa.gif ${qout}_unwarp_qa.gif )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+
+	#Make QA Movie
+	set cmd = ( $FSL/whirlgif -o ${qout}_unwarp_movie_qa.gif -time 50 -loop 0 )
+	set cmd = ( $cmd ${qout}_unwarp_dist_qa.gif ${qout}_unwarp_undist_qa.gif )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	
+	#Cleanup
+	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
+endif
+
 #Use FSL to get ASL->T1 registration qa images
 if ( ! -e ${qout}_asl_to_free_qa.png || $?force == 1 ) then
 	#Get Asl Outlines
@@ -686,7 +716,7 @@ endif
 if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "Creating QA webpage at: `pwd`/${qout}_asl_qa_index.html" |& tee -a $log
 	#Create webpages
-	set web_list = ( ${qout}_asl_qa_mc.html ${qout}_asl_qa_bmsk.html \
+	set web_list = ( ${qout}_asl_qa_mc.html ${qout}_asl_qa_bmsk.html ${qout}_asl_qa_unwarp.html \
 		  			 ${qout}_asl_qa_reg.html ${qout}_asl_qa_index.html )
 	touch $web_list
 	
@@ -694,6 +724,7 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo '<html><body bgcolor="gray">' | tee $web_list > /dev/null
 	echo "<center><h1>${program}: ${subj} Quick QA</center></h1>" | tee -a $web_list > /dev/null
 	echo "<center><a href=${root}_asl_qa_mc.html>Motion_Correction</a href> - \
+		  <a href=${root}_asl_qa_unwarp.html>Unwarp</a href> - \
 		  <a href=${root}_asl_qa_bmsk.html>Brain Masking</a href> - \
 		  <a href=${root}_asl_qa_reg.html>Registration</a ref></center> " | tee -a $web_list > /dev/null
 	
@@ -704,15 +735,24 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "<p><IMG BORDER=0 SRC=${root}_rot.png>" >> ${qout}_asl_qa_mc.html
 	echo "<p><IMG BORDER=0 SRC=${root}_trans.png>" >> ${qout}_asl_qa_mc.html
 	echo "<p><IMG BORDER=0 SRC=${root}_disp.png>" >> ${qout}_asl_qa_mc.html
+
+	#Setup Unwarp
+	echo "<hr><h2>ASL Undistortion</h2>" >> ${qout}_asl_qa_unwarp.html
+	echo "<p>Distorted (Top) vs. Undistorted (Bottom)" >> ${qout}_asl_qa_unwarp.html
+	echo "<p><IMG BORDER=0 SRC=${root}_unwarp_qa.gif>" >> ${qout}_asl_qa_unwarp.html
+	echo "<p>Distorted vs. Undistorted Animated GIF" >> ${qout}_asl_qa_unwarp.html	
+	echo "<p><IMG BORDER=0 SRC=${root}_unwarp_movie_qa.gif>" >> ${qout}_asl_qa_unwarp.html
 	
 	#Setup Brain Masking
 	echo "<hr><h2>ASL Brain Masking</h2>" >> ${qout}_asl_qa_bmsk.html
-	echo "Mask was generated through registration with FreeSurfer." >> ${qout}_asl_qa_bmsk.html
+	echo "Mask was generated through registration field map magnitude." >> ${qout}_asl_qa_bmsk.html
 	echo "<p><IMG BORDER=0 SRC=${root}_asl_brain_mask_qa.png>" >> ${qout}_asl_qa_bmsk.html
 		 
 	#Setup Registration
 	echo "<hr><h2>Registration</h2>" >> ${qout}_asl_qa_reg.html
 	echo "ASL to FreeSurfer T1" >> ${qout}_asl_qa_reg.html
+	set cost = `cat ${aout}_asl_to_free.reg.mincost`
+	echo "<p>BBR Cost: $cost[1]" >> ${qout}_asl_qa_reg.html
 	echo "<p><IMG BORDER=0 SRC=${root}_asl_to_free_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
 	echo "<p>Nonlinear Registration of Freesurfer T1 to MNI152 T1 2MM" >> ${qout}_asl_qa_reg.html
 	echo "<p><IMG BORDER=0 SRC=${root}_free_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
