@@ -377,13 +377,20 @@ if ( ! -e ${cout}_rawavg_masked_pve_0.nii.gz || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
 
-#Resample partial volume maps into ASL space
 foreach pve ( 0 1 2 )
+	#Resample partial volume maps into ASL space
 	if ( ! -e ${cout}_rawavg_masked_pve_${pve}_to_asl.nii.gz || $?force == 1 ) then
 		set cmd = ( $FSL/applywarp --in=${cout}_rawavg_masked_pve_${pve} --super --interp=spline )
 		set cmd = ( $cmd --ref=${pout}_m0 --superlevel=4 --premat=${aout}_ntv_to_cnf.mat )
 		set cmd = ( $cmd --postmat=${aout}_free_to_asl.mat --mask=$pdir/${root}_asl_mask )
 		set cmd = ( $cmd --out=${cout}_rawavg_masked_pve_${pve}_to_asl )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	endif
+	
+	#Reorient partial volume for QA viewing
+	if ( ! -e ${cout}_rawavg_masked_pve_${pve}_std.nii.gz || $?force == 1 ) then
+		set cmd = ( $FSL/fslreorient2std ${cout}_rawavg_masked_pve_${pve} )
+		set cmd = ( $cmd ${cout}_rawavg_masked_pve_${pve}_std )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
 end
@@ -587,7 +594,7 @@ endif
 
 
 #Setup slicer and png_append options
-set sliceropts = ( -s 2 -x 0.5 ${qout}_sla.png -x 0.45 ${qout}_slb.png -x 0.55 ${qout}_slc.png \
+set sliceropts = ( -x 0.35 ${qout}_sla.png -x 0.45 ${qout}_slb.png -x 0.55 ${qout}_slc.png \
 				   -x 0.65 ${qout}_sld.png -y 0.35 ${qout}_sle.png -y 0.45 ${qout}_slf.png \
 				   -y 0.55 ${qout}_slg.png -y 0.65 ${qout}_slh.png -z 0.35 ${qout}_sli.png \
 				   -z 0.45 ${qout}_slj.png -z 0.55 ${qout}_slk.png -z 0.65 ${qout}_sll.png )
@@ -598,7 +605,7 @@ set appendopts = ( ${qout}_sla.png + ${qout}_slb.png + ${qout}_slc.png + ${qout}
 #Use FSL to get brain mask QA image
 if ( ! -e ${qout}_asl_brain_mask_qa.png || $?force == 1 ) then
 	#Get non-eroded qa image
-	set cmd = ( $FSL/slicer ${pout}_m0 $pdir/${root}_asl_mask $sliceropts )
+	set cmd = ( $FSL/slicer $pdir/${root}_epi_0_unwarped $pdir/${root}_asl_mask -s 2.5 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_asl_brain_mask_qa.png )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -608,43 +615,77 @@ if ( ! -e ${qout}_asl_brain_mask_qa.png || $?force == 1 ) then
 endif
 
 #Use FSl to get undistortion QA image
-if ( ! -e ${qout}_unwarp_qa.gif || ! -e ${qout}_unwarp_movie_qa.gif || $?force == 1 ) then
+if ( ! -e ${qout}_unwarp_movie_qa.gif || ! -e ${qout}_dmag_movie_qa.gif || \
+		! -e ${qout}_udmag_movie_qa.gif || $?force == 1 ) then
+	
+	#Get magnitude image
+	set cmd = ( $FSL/slicer $pdir/${root}_mag_brain_to_${root}_epi_0_brain -s 2.5 $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSL/pngappend $appendopts ${qout}_unwarp_mag_qa.gif )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
 	#Get distorted image
-	set cmd = ( $FSL/slicer $pdir/${root}_epi_0_brain $sliceropts )
+	set cmd = ( $FSL/slicer $pdir/${root}_epi_0_brain -s 2.5 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_unwarp_dist_qa.gif )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
 	#Get undistorted image
-	set cmd = ( $FSL/slicer ${pout}_m0 $sliceropts )
+	set cmd = ( $FSL/slicer ${pout}_m0 -s 2.5 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_unwarp_undist_qa.gif )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
-	#Combine QA Images
-	set cmd = ( $FSL/pngappend ${qout}_unwarp_dist_qa.gif )
-	set cmd = ( $cmd - ${qout}_unwarp_undist_qa.gif ${qout}_unwarp_qa.gif )
-	echo $cmd |& tee -a $log; $cmd |& tee -a $log
-
-	#Make QA Movie
+	#Make Undistortion movie
 	set cmd = ( $FSL/whirlgif -o ${qout}_unwarp_movie_qa.gif -time 50 -loop 0 )
 	set cmd = ( $cmd ${qout}_unwarp_dist_qa.gif ${qout}_unwarp_undist_qa.gif )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Make Mag and Distorted movie
+	set cmd = ( $FSL/whirlgif -o ${qout}_dmag_movie_qa.gif -time 50 -loop 0 )
+	set cmd = ( $cmd ${qout}_unwarp_dist_qa.gif ${qout}_unwarp_mag_qa.gif )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Make Mag and Undistorted movie
+	set cmd = ( $FSL/whirlgif -o ${qout}_udmag_movie_qa.gif -time 50 -loop 0 )
+	set cmd = ( $cmd ${qout}_unwarp_undist_qa.gif ${qout}_unwarp_mag_qa.gif )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	
 	#Cleanup
 	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
 endif
 
+#Use FSL to get T1 segmentation qa images
+if ( ! -e ${qout}_seg_rawavg_qa.png || ! -e ${qout}_seg_0_qa.png || ! -e ${qout}_seg_1_qa.png \
+		|| ! -e ${qout}_seg_2_qa.png || $?force == 1 ) then
+	#Make T1 image
+	set cmd = ( $FSL/slicer ${aout}_rawavg_std -s .8 $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSL/pngappend $appendopts ${qout}_seg_rawavg_qa.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Make an image for each pve map
+	foreach pve ( 0 1 2 )
+		set cmd = ( $FSL/slicer ${cout}_rawavg_masked_pve_${pve}_std -s .8 $sliceropts )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+		set cmd = ( $FSL/pngappend $appendopts ${qout}_seg_${pve}_qa.png )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	end
+	
+	#Cleanup
+	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
+endif	
+
 #Use FSL to get ASL->T1 registration qa images
 if ( ! -e ${qout}_asl_to_free_qa.png || $?force == 1 ) then
 	#Get Asl Outlines
-	set cmd = ( $FSL/slicer ${aout}_brain_std ${aout}_asl_to_free_std $sliceropts )
+	set cmd = ( $FSL/slicer ${aout}_brain_std ${aout}_asl_to_free_std -s 2 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_asl_to_free_qa1.png )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		
 	#Get T1 outlines
-	set cmd = ( $FSL/slicer ${aout}_asl_to_free_std ${aout}_brain_std $sliceropts )
+	set cmd = ( $FSL/slicer ${aout}_asl_to_free_std ${aout}_brain_std -s 2 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_asl_to_free_qa2.png )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -662,14 +703,14 @@ endif
 if ( ! -e ${qout}_free_to_MNI152_qa.png || $?force == 1 ) then
 	#Use FSL to get free to MNI152 QA (MNI Outlines)
 	set cmd = ( $FSL/slicer ${aout}_free_warped_to_MNI152 )
-	set cmd = ( $cmd ${FSLDIR}/data/standard/MNI152_T1_2mm_brain $sliceropts )
+	set cmd = ( $cmd ${FSLDIR}/data/standard/MNI152_T1_2mm_brain -s 2 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_free_to_MNI152_qa1.png )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	
 	#Use FSL to get free to MNI 152 QA (free standard outlines)
 	set cmd = ( $FSL/slicer ${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
-	set cmd = ( $cmd ${aout}_free_warped_to_MNI152 $sliceropts )
+	set cmd = ( $cmd ${aout}_free_warped_to_MNI152 -s 2 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_free_to_MNI152_qa2.png )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -687,14 +728,14 @@ endif
 if ( ! -e ${qout}_asl_to_MNI152_qa.png || $?force == 1 ) then
 	#Use FSL to get free to MNI152 QA (MNI Outlines)
 	set cmd = ( $FSL/slicer ${aout}_asl_warped_to_MNI152 )
-	set cmd = ( $cmd ${FSLDIR}/data/standard/MNI152_T1_2mm_brain $sliceropts )
+	set cmd = ( $cmd ${FSLDIR}/data/standard/MNI152_T1_2mm_brain -s 2 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_asl_to_MNI152_qa1.png )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	
 	#Use FSL to get free to MNI 152 QA (free standard outlines)
 	set cmd = ( $FSL/slicer ${FSLDIR}/data/standard/MNI152_T1_2mm_brain )
-	set cmd = ( $cmd ${aout}_asl_warped_to_MNI152 $sliceropts )
+	set cmd = ( $cmd ${aout}_asl_warped_to_MNI152 -s 2 $sliceropts )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	set cmd = ( $FSL/pngappend $appendopts ${qout}_asl_to_MNI152_qa2.png )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -708,6 +749,15 @@ if ( ! -e ${qout}_asl_to_MNI152_qa.png || $?force == 1 ) then
 	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
 endif
 
+#Take QA screenshots of CBF image
+foreach cbf ( cbf_avg pvc5_cbf_avg ) 
+	if ( ! -e ${qout}_${cbf}_to_MNI152_qa.png || $?force == 1 ) then
+		set cmd = ( python /home/tblazey/scripts/cbf_qa.py ${cout}_${cbf}_warped_to_MNI152_2mm_fwhm_5.nii.gz )
+		set cmd = ( $cmd ${qout}_${cbf}_to_MNI152_qa.png )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	endif
+end
+
 ################
 ###QA Webpage###
 ################
@@ -717,7 +767,8 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "Creating QA webpage at: `pwd`/${qout}_asl_qa_index.html" |& tee -a $log
 	#Create webpages
 	set web_list = ( ${qout}_asl_qa_mc.html ${qout}_asl_qa_bmsk.html ${qout}_asl_qa_unwarp.html \
-		  			 ${qout}_asl_qa_reg.html ${qout}_asl_qa_index.html )
+		  			 ${qout}_asl_qa_seg.html ${qout}_asl_qa_reg.html ${qout}_asl_qa_index.html \
+		  			 ${qout}_asl_qa_cbf.html )
 	touch $web_list
 	
 	#Setup header
@@ -726,7 +777,9 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "<center><a href=${root}_asl_qa_mc.html>Motion_Correction</a href> - \
 		  <a href=${root}_asl_qa_unwarp.html>Unwarp</a href> - \
 		  <a href=${root}_asl_qa_bmsk.html>Brain Masking</a href> - \
-		  <a href=${root}_asl_qa_reg.html>Registration</a ref></center> " | tee -a $web_list > /dev/null
+		  <a href=${root}_asl_qa_seg.html>Segmentation</a href> - \
+		  <a href=${root}_asl_qa_reg.html>Registration</a ref> - \
+		  <a href=${root}_asl_qa_cbf.html>CBF</a ref></center> " | tee -a $web_list > /dev/null
 	
 	#Setup Motion Correction
 	echo "<hr><h2>Motion Correction</h2>" >> ${qout}_asl_qa_mc.html
@@ -738,16 +791,30 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 
 	#Setup Unwarp
 	echo "<hr><h2>ASL Undistortion</h2>" >> ${qout}_asl_qa_unwarp.html
-	echo "<p>Distorted (Top) vs. Undistorted (Bottom)" >> ${qout}_asl_qa_unwarp.html
-	echo "<p><IMG BORDER=0 SRC=${root}_unwarp_qa.gif>" >> ${qout}_asl_qa_unwarp.html
 	echo "<p>Distorted vs. Undistorted Animated GIF" >> ${qout}_asl_qa_unwarp.html	
 	echo "<p><IMG BORDER=0 SRC=${root}_unwarp_movie_qa.gif>" >> ${qout}_asl_qa_unwarp.html
+	echo "<p>Distorted vs. Magnitude Animated GIF" >> ${qout}_asl_qa_unwarp.html	
+	echo "<p><IMG BORDER=0 SRC=${root}_dmag_movie_qa.gif>" >> ${qout}_asl_qa_unwarp.html
+	echo "<p>Undistorted vs. Magnitude Animated GIF" >> ${qout}_asl_qa_unwarp.html	
+	echo "<p><IMG BORDER=0 SRC=${root}_udmag_movie_qa.gif>" >> ${qout}_asl_qa_unwarp.html
+	
 	
 	#Setup Brain Masking
 	echo "<hr><h2>ASL Brain Masking</h2>" >> ${qout}_asl_qa_bmsk.html
 	echo "Mask was generated through registration field map magnitude." >> ${qout}_asl_qa_bmsk.html
 	echo "<p><IMG BORDER=0 SRC=${root}_asl_brain_mask_qa.png>" >> ${qout}_asl_qa_bmsk.html
-		 
+	
+	#Setup Segmentation
+	echo "<hr><h2>T1 FIRST Segmentation</h2>" >> ${qout}_asl_qa_seg.html
+	echo "Source T1 Weighted Image" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_rawavg_qa.png>" >> ${qout}_asl_qa_seg.html
+	echo "<p>CSF Map" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_0_qa.png>" >> ${qout}_asl_qa_seg.html
+	echo "<p>Gray Map" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_1_qa.png>" >> ${qout}_asl_qa_seg.html
+	echo "<p>White Map" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_2_qa.png>" >> ${qout}_asl_qa_seg.html
+	
 	#Setup Registration
 	echo "<hr><h2>Registration</h2>" >> ${qout}_asl_qa_reg.html
 	echo "ASL to FreeSurfer T1" >> ${qout}_asl_qa_reg.html
@@ -758,6 +825,17 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "<p><IMG BORDER=0 SRC=${root}_free_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
 	echo "<p>Nonlinear Registration of ASL to MNI152 T1 2MM" >> ${qout}_asl_qa_reg.html
 	echo "<p><IMG BORDER=0 SRC=${root}_asl_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
+	
+	#Setup CBF
+	echo "<hr><h2>CBF</h2>" >> ${qout}_asl_qa_cbf.html
+	set cbf = `fslstats ${cout}_cbf_avg -k ${cout}_gm_mask -m`
+	set pvc_cbf = `fslstats  ${cout}_pvc${kernel}_cbf_avg -k ${cout}_gm_mask -m`
+	echo "<p>CBF GM Average = $cbf	PVC GM Average = $pvc_cbf"  >> ${qout}_asl_qa_cbf.html
+	echo "<p>CBF Smoothed by ${fwhm}mm and warped to MNI152 2mm" >> ${qout}_asl_qa_cbf.html
+	echo "<p><IMG BORDER=0 SRC=${root}_cbf_avg_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_cbf.html
+	echo "<p>PVC Corrected CBF - Smoothed by ${fwhm}mm and warped to MNI152 2mm" >> ${qout}_asl_qa_cbf.html
+	echo "<p><IMG BORDER=0 SRC=${root}_pvc${kernel}_cbf_avg_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_cbf.html
+	
 endif
 
 echo "#######################################" |& tee -a $log
