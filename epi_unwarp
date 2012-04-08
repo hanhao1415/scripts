@@ -362,10 +362,15 @@ set cmd = ( $cmd ${out}signal_loss_distorted ); echo $cmd |& tee -a $log; $cmd |
 
 #Register the distorted magnitude to the distorted functional. 
 #Use the threshholded signal loss brain as weighting (areas with 0 will be ignored)
-set cmd = ( $FSL/flirt -in ${out}mag_brain_signal_lossed_distorted -ref ${out}epi_${ref}_brain )
-set cmd = ( $cmd -omat ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
-set cmd = ( $cmd -out ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain )
-set cmd = ( $cmd -inweight ${out}signal_loss_distorted -dof 6 )
+set cmd = ( $FSL/flirt -ref ${out}mag_brain_signal_lossed_distorted -in ${out}epi_${ref}_brain )
+set cmd = ( $cmd -omat ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted.mat )
+set cmd = ( $cmd -out ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted )
+set cmd = ( $cmd -refweight ${out}signal_loss_distorted -dof 6 )
+echo $cmd |& tee -a $log; $cmd |& tee -a $log 
+
+#Invert transformation to get mag->epi
+set cmd = ( $FSL/convert_xfm -omat ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
+set cmd = ( $cmd -inverse ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted.mat )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 
 #Apply transformation to original magnitude image for QA purposes
