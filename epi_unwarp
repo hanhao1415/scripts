@@ -237,7 +237,7 @@ if ( $?meanmap == 0 ) then
 	
 	#If user wants, unwrap phase with prelude.
 	if ( $?unwrap == 0 ) then
-		set cmd = ( $FSL/prelude -p ${pout} -a ${out}mag -o ${pout}_unwrap -m ${out}mag_brain )
+		set cmd = ( $FSL/prelude -p ${pout} -a ${out}mag -o ${pout}_unwrap -m ${out}mag_brain_mask )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log; set pout = ${pout}_unwrap
 	endif
 	
