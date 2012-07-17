@@ -27,7 +27,7 @@ except (IOError,nib.spatialimages.ImageFileError):
 betaData = np.float64(beta.get_data())
 
 #Make sign
-signedData = -1 * np.ma.log10(pData) * np.sign(beta)
+signedData = -1 * np.ma.log10(pData) * np.sign(betaData)
 
 #Output image
 signed = nib.Nifti1Image(signedData,p.get_affine())
