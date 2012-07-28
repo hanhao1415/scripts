@@ -205,13 +205,13 @@ else:
  		for frame in range(perf_masked_data.shape[3]):
  		 		#Check for frames outliers
  		 		if slice == 0:
-					if np.ma.abs(np.ma.mean(perf_masked_data[:,:,:,frame]),dtype=np.float64) > frame_out_avg \
+					if np.ma.abs(np.ma.mean(perf_masked_data[:,:,:,frame],dtype=np.float64)) > frame_out_avg \
 							or frame_std_array[frame] > frame_out_std:
 						frame_filt_mask[:,:,:,frame] = 1
 						frame_outlier_count += 1
 	
 				#Get the average and std for slice within frame
-				slice_avg_array[frame] = np.ma.abs(np.ma.mean(perf_masked_data[:,:,slice,frame]),dtype=np.float64)
+				slice_avg_array[frame] = np.ma.abs(np.ma.mean(perf_masked_data[:,:,slice,frame],dtype=np.float64))
 				slice_std_array[frame] = np.ma.std(perf_masked_data[:,:,slice,frame],dtype=np.float64)
 
 		#Get the average std and the std of std for the slice
