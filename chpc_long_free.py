@@ -62,7 +62,7 @@ for item in csv_reader:
 			#PBS -N %s -l nodes=1:ppn=1:idataplex,walltime=%i:00:00,vmem=%igb -o %s/%s_stdout.txt -e %s/%s_stderr.txt
 			
 			#Setup FreeSurfer options
-			export SUBJECTS_DIR = %s
+			export SUBJECTS_DIR=%s
 			export FREESURFER_HOME=/export/freesurfer-5.1
 			export PATH=$FREESURFER_HOME/bin/:$PATH
 			export PATH=${FREESURFER_HOME}/mni/bin:$PATH
