@@ -1,12 +1,7 @@
 #!/Library/Frameworks/Python.framework/Versions/Current/bin/python
 
-#Import system modules
-import sys, argparse
-
-#Import external modules
-import numpy as np, nibabel as nib, matplotlib.pyplot as plt 
-
 #Parse arguments
+import argparse
 arg_parse = argparse.ArgumentParser(description='Convert FSL .par file to 4dfp type .dat files')
 #Positional arguments
 arg_parse.add_argument('raw',help='Unaligned image. Most likely the input to mcflirt.',nargs=1)
@@ -22,6 +17,9 @@ arg_parse.add_argument('-rad',help='Radius used to calculated total rms. Default
 arg_parse.add_argument('-ref',help='Reference frame for scale calculation. Default is 4.',type=int,default=[4],nargs=1)
 arg_parse.add_argument('-plot',help='Output motion plots',action='store_const',default=[0],const=[1])
 args = arg_parse.parse_args()
+
+#Import  modules
+import sys, numpy as np, nibabel as nib, matplotlib.pyplot as plt 
 
 #Function to calculate summary parameters
 def param_sum(filename,params):
