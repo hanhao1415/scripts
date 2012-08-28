@@ -2,12 +2,16 @@
 # Tyler Blazey, Summer 2011
 
 #Check for dependencies
-if ( ! -e $FSLDIR ) then
-	echo "Set FSLDIR before running script"
+if ( $?FSLDIR == 0 ) then
+	echo "Set FSLDIR before running."
 	exit 1
 endif
-if ( ! -e $FREESURFER_HOME ) then
-	echo "Set FREESURFER_HOME before running script"
+if ( $?FREESURFER_HOME == 0 ) then
+	echo "Set FREESURFER_HOME before running."
+	exit 1
+endif
+if ( $?SCRIPTS == 0 ) then
+	echo "Set SCRIPTS before running."
 	exit 1
 endif
 set FREE = $FREESURFER_HOME/bin; set FSL = $FSLDIR/bin
@@ -185,6 +189,13 @@ if ( ! -e ${pout}_mcf_unwarped_masked.nii.gz || ! -e ${pout}_mask.nii.gz || $?fo
 endif
 set pout = ${pout}_mcf_unwarped_masked
 
+#Motion scrub
+if ( ! -e ${pout}_scrbd.nii.gz || $?force == 1 ) then
+	set cmd = ( python $SCRIPTS/aslSkip.py ${pout}.nii.gz ${pdir}/${root}_mcf.par ${pout}_scrbd -plot )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+endif
+set pout = ${pout}_scrbd	
+
 #Extract motion corrected m0
 if ( ! -e ${pout}_m0.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSL/fslroi ${pout} ${pout}_m0 0 1 ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -219,7 +230,7 @@ endif
 
 #Use FreeSurfer to get a reorientation to MNI standard matrix
 if ( ! -e ${aout}_free_to_std.mat || $?force == 1 ) then
-	set cmd = ( $FREE/tkregister2 --mov ${aout}_T1.nii.gz --targ ${aout}_T1_std.nii.gz )
+	set cmd = ( $FREE/tkregister2_cmdl --mov ${aout}_T1.nii.gz --targ ${aout}_T1_std.nii.gz )
   	set cmd =  ($cmd --regheader --noedit --fslregout ${aout}_free_to_std.mat )
   	set cmd = ( $cmd --reg ${aout}_std_to_free.reg )
   	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -227,7 +238,7 @@ endif
 
 #Use FreeSurfer to get a transformation for conformed to native space
 if ( ! -e ${aout}_cnf_to_ntv.mat || $?force == 1 ) then
-	set cmd = ( $FREE/tkregister2 --mov $SUBJECTS_DIR/$subj/mri/orig.mgz --regheader )
+	set cmd = ( $FREE/tkregister2_cmdl --mov $SUBJECTS_DIR/$subj/mri/orig.mgz --regheader )
 	set cmd = ( $cmd --reg ${aout}_cnf_to_ntv.reg --fslregout ${aout}_cnf_to_ntv.mat --noedit )
 	set cmd = ( $cmd --targ $SUBJECTS_DIR/$subj/mri/rawavg.mgz )
   	echo $cmd |& tee -a $log; $cmd |& tee -a $log
@@ -313,7 +324,7 @@ endif
 #Use FSL to do a nonlinear registration between T1 and MNI152
 if ( ! -e ${aout}_free_to_MNI152_coef.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSL/fnirt --in=${aout}_T1 --aff=${aout}_free_to_MNI152.mat --verbose )
-	set cmd = ( $cmd --config=/home/tblazey/scripts/T1_2_MNI152_2mm_mod.cnf )
+	set cmd = ( $cmd --config=T1_2_MNI152_2mm.cnf )
 	set cmd = ( $cmd --jout=${aout}_free_to_MNI152_jac --cout=${aout}_free_to_MNI152_coef )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
@@ -447,7 +458,7 @@ endif
 
 #Calculate uncorrected cbf	
 if ( ! -e ${cout}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( python /home/tblazey/scripts/cbf_calc.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
+	set cmd = ( python $SCRIPTS/cbf_calc.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
 	set cmd = ( $cmd $pdir/${root}_asl_mask.nii.gz ${cout} $out4d $unfilt )
 	set cmd = ( $cmd -mthresh $mthresh -sthresh $sthresh -minTR 3400.0 -TI2 1900 )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
@@ -455,7 +466,7 @@ endif
 
 #Run a regression based partial volume correction
 if ( ! -e ${cout}_pvc${kernel}_mgm.nii.gz || $?force == 1 ) then
-	set cmd = ( python /home/tblazey/scripts/lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
+	set cmd = ( python $SCRIPTS/lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_m0.nii.gz )
 	set cmd = ( $cmd $pdir/${root}_asl_mask.nii.gz ${cout}_rawavg_masked_pve_0_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_rawavg_masked_pve_1_to_asl.nii.gz  ${cout}_rawavg_masked_pve_2_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_pvc${kernel} $nocsf -kernel $kernel)
@@ -463,14 +474,21 @@ if ( ! -e ${cout}_pvc${kernel}_mgm.nii.gz || $?force == 1 ) then
 endif
 
 #Calculate corrected cbf
-if ( ! -e ${cout}_pvc${kernel}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( python /home/tblazey/scripts/cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz )
+if ( ! -e ${cout}_pvc${kernel}_cbf_avg.nii.gz || $?force == 1 ) then	
+	set cmd = ( python $SCRIPTS/cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz )
 	set cmd = ( $cmd ${cout}_pvc${kernel}_mgm.nii.gz $pdir/${root}_asl_mask.nii.gz ${cout}_pvc${kernel} )
 	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh -minTR 3400.0 -TI2 1900 )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log		
 endif
 
-foreach cbf ( ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg ${cout}_pvc${kernel}_cbf_var ${cout}_cbf_var )
+#Get Nifti version of aparc+aseg
+if ( ! -e $cdir/${root}_aparc+aseg.nii.gz || $?force == 1) then
+	set cmd = ( $FREE/mri_convert $SUBJECTS_DIR/$subj/mri/aparc+aseg.mgz )
+	set cmd = ( $cmd $cdir/${root}_aparc+aseg.nii.gz )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+endif
+
+foreach cbf ( ${cout}_pvc${kernel}_cbf_var ${cout}_cbf_var ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg )
 	
 	#Transform cbf to Freesurfer subject volume
 	if ( ! -e ${cbf}_to_free.nii.gz || $?force == 1 ) then
@@ -496,44 +514,29 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg ${cout}_pvc${kernel}_
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 	
-	#Get reasonable output mask
+	#Use Freesurfer to get a defined asl mask
 	if (( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
-			&& ( ! -e ${cbf}_outlier_mask.nii.gz || $?force == 1)) then
-		
-		#Use Freesurfer to get a defined asl mask
+			&& ( ! -e ${cbf}_defined_mask.nii.gz || $?force == 1)) then
 		set cmd = ( $FREE/mri_binarize --i ${cbf}_to_free.nii.gz --match 0 --inv )
 		set cmd = ( $cmd --o ${cbf}_defined_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		
-		#Use Freesurfer to get a filtering mask. Erode a little bit to get rid of edges
-		set cmd = ( $FREE/mri_binarize --i ${cbf}_defined_mask.nii.gz --match 1 )
-		set cmd = ( $cmd --erode 1 --zero-edges --o ${cbf}_to_free_filt_mask.nii.gz )
-		echo $cmd |& tee -a $log; $cmd |& tee -a $log
-		
-		#Use FSL to get 1st and 99th percentile
-		set min = `$FSL/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -p 1`
-		set max = `$FSL/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -p 99`
-		
-		#Use FreeSurfer to get a outlier mask
-		set cmd = ( $FREE/mri_binarize --i ${cbf}_to_free.nii.gz --min $min )
-		set cmd = ( $cmd --max $max --mask ${cbf}_defined_mask.nii.gz --o ${cbf}_outlier_mask.nii.gz )
-		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 										 		
-	#Get filtered stats from Freesurfer segmentations
+	#Get weighted stats from Freesurfer segmentations
 	if ( ( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
 			&& ( ! -e ${cbf}_stats.txt || $?force == 1 )) then
-		set cmd = ( $FREE/mri_segstats --i ${cbf}_to_free.nii.gz )
-		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt --sum ${cbf}_stats.txt )
-		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subj}/mri/aparc+aseg.mgz )
-		set cmd = ( $cmd --mask ${cbf}_outlier_mask.nii.gz )
+		set var = `echo $cbf | sed "s/avg/var/g"`
+		set cmd = ( python $SCRIPTS/weight_mean.py ${cbf}_to_free.nii.gz ${var}_to_free.nii.gz )
+		set cmd = ( $cmd $cdir/${root}_aparc+aseg.nii.gz ${cbf}_defined_mask.nii.gz )
+		set cmd = ( $cmd $SCRIPTS/asl_roi_list.txt ${cbf}_stats.txt )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
 	
-	#Get unfiltered stats from FreeSurfer segmentations
+	#Get unweighted stats from FreeSurfer segmentations
 	if ( ( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
-			&& ( ! -e ${cbf}_stats_unfilt.txt || $?force == 1 )) then
-		set cmd = ( $FREE/mri_segstats --i ${cbf}_to_free.nii.gz --sum ${cbf}_stats_unfilt.txt )
+			&& ( ! -e ${cbf}_stats_unweighted.txt || $?force == 1 )) then
+		set cmd = ( $FREE/mri_segstats --i ${cbf}_to_free.nii.gz --sum ${cbf}_stats_unweighted.txt )
 		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt )
 		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subj}/mri/aparc+aseg.mgz )
 		set cmd = ( $cmd --mask ${cbf}_defined_mask.nii.gz )
@@ -566,32 +569,11 @@ end
 #######################
 set qdir = $outdir/qa; if ( ! -d $qdir ) mkdir $qdir; set qout = $qdir/${root}
 
-#Use FSL to create Rotation plot
-set mpar = $pdir/${root}_mcf
-if ( ! -e ${qout}_rot.png || $?force == 1 ) then	
-	set cmd = ( $FSL/fsl_tsplot -i ${mpar}.par -w 640 -h 144 ) 
-	set cmd = ( $cmd -a x,y,z -u 1 --start=1 --finish=3 -o ${qout}_rot.png )
-	echo $cmd -t 'Estimated Rotations (radians)' |& tee -a $log
-	$cmd -t 'Estimated Rotations (radians)' |& tee -a $log
+#Move the displacement plots to the QA folder
+if ( ! -e $qdir/${pout}_trans.png || ! -e qdir/${pout}_scrbd_trans.png || $?force == 1 ) then
+	set cmd = ( /bin/cp ${pout}_trans.png ${pout}_rot.png $qdir )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
-		
-#Use FSL to create translation plots
-if ( ! -e  ${qout}_trans.png || $?force == 1 ) then
-	set cmd = ( $FSL/fsl_tsplot -i ${mpar}.par -u 1 --start=4 )
-	set cmd = ( $cmd --finish=6 -a x,y,z  -w 640 -h 144 -o ${qout}_trans.png )
-	echo $cmd -t 'Estimated Translations (mm)' |& tee -a $log
-	$cmd -t 'Estimated Translations (mm)' |& tee -a $log
-endif
-	
-#Use FSL to create displacement plots
-if ( ! -e ${qout}_disp.png || $?force == 1 ) then
-	set cmd = ( $FSL/fsl_tsplot )
-	set cmd = ( $cmd -i ${mpar}_abs.rms,${mpar}_rel.rms )
-	set cmd = ( $cmd -u 1 -w 640 -h 144 -o ${qout}_disp.png -a abs,rel )
-	echo $cmd -t 'Estimated Displacements (mm)'  |& tee -a $log
-	$cmd -t 'Estimated Displacements (mm)' |& tee -a $log
-endif
-
 
 #Setup slicer and png_append options
 set sliceropts = ( -x 0.35 ${qout}_sla.png -x 0.45 ${qout}_slb.png -x 0.55 ${qout}_slc.png \
@@ -752,7 +734,7 @@ endif
 #Take QA screenshots of CBF image
 foreach cbf ( cbf_avg pvc5_cbf_avg ) 
 	if ( ! -e ${qout}_${cbf}_to_MNI152_qa.png || $?force == 1 ) then
-		set cmd = ( python /home/tblazey/scripts/cbf_qa.py ${cout}_${cbf}_warped_to_MNI152_2mm_fwhm_5.nii.gz )
+		set cmd = ( python $SCRIPTS/cbf_qa.py ${cout}_${cbf}_warped_to_MNI152_2mm_fwhm_5.nii.gz )
 		set cmd = ( $cmd ${qout}_${cbf}_to_MNI152_qa.png )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
@@ -783,11 +765,12 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	
 	#Setup Motion Correction
 	echo "<hr><h2>Motion Correction</h2>" >> ${qout}_asl_qa_mc.html
-	set rel = `cat ${mpar}_rel_mean.rms`; set abs = `cat ${mpar}_abs_mean.rms`
+	set rel = `cat ${pdir}/${root}_mcf_rel_mean.rms`; set abs = `cat ${pdir}/${root}_mcf_abs_mean.rms`
+	set scrubbed = `cat ${pout}_skip_count.txt`
 	echo "MCFLIRT Estimated Displacements(mm): Absolute=$abs Relative=$rel" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${root}_rot.png>" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${root}_trans.png>" >> ${qout}_asl_qa_mc.html
-	echo "<p><IMG BORDER=0 SRC=${root}_disp.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p>$scrubbed" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${pout:t}_trans.png>" >> ${qout}_asl_qa_mc.html
+	echo "<p><IMG BORDER=0 SRC=${pout:t}_rot.png>" >> ${qout}_asl_qa_mc.html
 
 	#Setup Unwarp
 	echo "<hr><h2>ASL Undistortion</h2>" >> ${qout}_asl_qa_unwarp.html
@@ -797,7 +780,6 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "<p><IMG BORDER=0 SRC=${root}_dmag_movie_qa.gif>" >> ${qout}_asl_qa_unwarp.html
 	echo "<p>Undistorted vs. Magnitude Animated GIF" >> ${qout}_asl_qa_unwarp.html	
 	echo "<p><IMG BORDER=0 SRC=${root}_udmag_movie_qa.gif>" >> ${qout}_asl_qa_unwarp.html
-	
 	
 	#Setup Brain Masking
 	echo "<hr><h2>ASL Brain Masking</h2>" >> ${qout}_asl_qa_bmsk.html
@@ -829,10 +811,15 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	#Setup CBF
 	echo "<hr><h2>CBF</h2>" >> ${qout}_asl_qa_cbf.html
 	set cbf = `fslstats ${cout}_cbf_avg -k ${cout}_gm_mask -m`
+	set cbf_filt = `cat ${cout}_filtered.txt`
 	set pvc_cbf = `fslstats  ${cout}_pvc${kernel}_cbf_avg -k ${cout}_gm_mask -m`
-	echo "<p>CBF GM Average = $cbf	PVC GM Average = $pvc_cbf"  >> ${qout}_asl_qa_cbf.html
+	set pvc_cbf_filt = `cat ${cout}_pvc${kernel}_filtered.txt`
+	echo "<p>CBF GM Average = $cbf" >> ${qout}_asl_qa_cbf.html
+	echo "<p>CBF Filtering: $cbf_filt" >> ${qout}_asl_qa_cbf.html
 	echo "<p>CBF Smoothed by ${fwhm}mm and warped to MNI152 2mm" >> ${qout}_asl_qa_cbf.html
 	echo "<p><IMG BORDER=0 SRC=${root}_cbf_avg_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_cbf.html
+	echo "<p>PVC GM Average = $pvc_cbf" >> ${qout}_asl_qa_cbf.html
+	echo "<p>PVC CBF Filtering: $pvc_cbf_filt" >> ${qout}_asl_qa_cbf.html
 	echo "<p>PVC Corrected CBF - Smoothed by ${fwhm}mm and warped to MNI152 2mm" >> ${qout}_asl_qa_cbf.html
 	echo "<p><IMG BORDER=0 SRC=${root}_pvc${kernel}_cbf_avg_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_cbf.html
 	

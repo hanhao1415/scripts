@@ -2,7 +2,7 @@
 
 #Parse arguments
 import argparse
-arg_parse = argparse.ArgumentParser(description='Use FSL .par files to determine frames to skip')
+arg_parse = argparse.ArgumentParser(description='Motion scrub ASL data')
 #Positional arguments
 arg_parse.add_argument('asl',help='ASL image to remove outliers from. Most likely the output from mcflirt',nargs=1)
 arg_parse.add_argument('par',help='Motion parameters estimated from mcflirt.',nargs=1)
@@ -88,7 +88,7 @@ for frame in range(skipMask.shape[0]):
 		
 #Write out scrubbed data
 asl_scrubbed = nib.Nifti1Image(asl_data,asl.get_affine())
-asl_scrubbed.to_filename(args.out[0] + '_scrubbed.nii.gz')
+asl_scrubbed.to_filename(args.out[0] + '.nii.gz')
 
 #Make plots if user wanted
 if args.plot == 1:
@@ -120,6 +120,10 @@ if args.plot == 1:
 	fig2.savefig(args.out[0] + '_rot.png')
 	fig2.clf()
 
+#Write out number of skipped frames
+skipFile = open(args.out[0] + '_skip_count.txt','w')
+skipFile.write('%i frames were removed'%(np.sum(skipMask)))
+skipFile.close()
 
 
 

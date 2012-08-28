@@ -36,15 +36,8 @@ Tyler Blazey, Summer 2011.
 
 """
 
-#Import system modules
-import sys
-import argparse
-
-#Import external modules
-import numpy as np
-import nibabel as nib
-
 #Parse arguments
+import argparse
 arg_parse = argparse.ArgumentParser(description='Calculate CBF from PASL perfusion images')
 #Positional arguments
 arg_parse.add_argument('perf',help='Path to nifti perfusion image',nargs=1)
@@ -76,6 +69,9 @@ arg_parse.add_argument('-out4d',action='store_const',const=1,
 arg_parse.add_argument('-col',action='store_const',const=1,help='Account for collated data with \
 					   when accounting for slice timing.')
 args = arg_parse.parse_args()
+
+#Import system modules
+import sys, numpy as np, nibabel as nib
 
 #Load images
 try:
@@ -184,7 +180,7 @@ else:
 	#Get the avg and standard deviation across frames
 	frame_avg = np.ma.mean(perf_masked_data,dtype=np.float64)
 	frame_std = np.ma.std(perf_masked_data,dtype=np.float64)
-	
+
 	#Get the average frame std and std of stds
 	frame_std_avg = np.ma.mean(frame_std_array,dtype=np.float64)
 	frame_std_std = np.ma.std(frame_std_array,dtype=np.float64)
@@ -229,11 +225,17 @@ else:
  				slice_outlier_count += 1
  		
  	#Combine all the masks
- 	print 'Rejecting %i outlier frames and %i outlier slices.'%(frame_outlier_count,slice_outlier_count)
  	comb_filt_mask = np.ma.mask_or(frame_filt_mask,slice_filt_mask)
 	comb_filt_mask = np.ma.mask_or(comb_filt_mask,np.ma.make_mask(mask_array_4d))
+	brain_sum = np.sum(mask_array_4d==0); masked_sum = np.sum(comb_filt_mask==0)
+	rejected = np.divide((brain_sum-masked_sum),brain_sum,dtype=np.float64) * 100
 	cbf_filt_masked_data = np.ma.array(np.zeros_like(perf_masked_data),mask=comb_filt_mask)
-
+	
+	#Write out filter status
+	filterFile = open(args.outroot[0] + '_filtered.txt','w')
+	filterFile.write('%i frames, %i slices, %.3f percent.'%(frame_outlier_count,slice_outlier_count,rejected))
+	filterFile.close()
+	
 #Calculate filtered cbf
 for frame in range(cbf_filt_masked_data.shape[3]):
 	cbf_filt_masked_data[:,:,:,frame] = np.ma.add(cbf_filt_masked_data[:,:,:,frame],
