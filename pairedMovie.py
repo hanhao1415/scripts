@@ -11,7 +11,7 @@ arg_parse.add_argument('-pib',action='store_const',const=1,help='Crop using PiB 
 args = arg_parse.parse_args()
 
 #Load the necessary libraries
-import Image, os
+import Image, os, sys
 
 #Get a list of all the images in the directory
 medImages = os.listdir(args.med[0])
@@ -24,7 +24,7 @@ try:
 except ValueError:
 	print '.DS_Store files are not present in both lists. This should be ok...'
 
-for med,lat in zip(medImages,latImages):
+for med,lat in zip(sorted(medImages),sorted(latImages)):
 	
 	outImage = "%s_%s.jpeg"%(args.out[0],os.path.splitext(med)[0])
 	print 'Making image %s'%(outImage)
@@ -32,7 +32,7 @@ for med,lat in zip(medImages,latImages):
 	if (med != lat):
 		print 'Error: Medial and lateral images do not have the same file name. Exiting...'
 		sys.exit()
-	
+		
 	#Make a new combined image
 	combined = Image.new("RGB",(1366,768))
 

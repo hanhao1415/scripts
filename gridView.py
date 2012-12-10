@@ -1,7 +1,7 @@
 #!/usr/bin/python
 """
 
-Save paired views of FreeSurfer surface.
+Save paired grid views of FreeSurfer surface.
 Image pasting code modified from http://29a.ch/2009/5/14/concatenating-images-using-python
 
 Note: Scale bar code still needs some work.
@@ -35,10 +35,6 @@ def setOverlay(overlay):
 		overlay.neg_bar.scalar_bar_representation.position2 = (0.15,0.45)
 		overlay.neg_bar.scalar_bar_representation.position = (0.82,0.075)
 		overlay.neg_bar.scalar_bar_representation.orientation = 1
-
-#Convert float to rounded integer
-def intRound(float):
-	return(int(round(float)))
 
 pics = []; outDir = os.path.dirname(args.out[0])
 for hemi in ['lh','rh']:
@@ -85,35 +81,33 @@ for hemi in ['lh','rh']:
 		pics.append(pic)
 
 #Reorder lists
-pics = [pics[0],pics[2],pics[3],pics[1]]
+pics = [pics[0],pics[2],pics[1],pics[3]]
 
 #Read in each image
 images = map(Image.open, pics)
 
-#Determine image dimensions. Assume that all are the same
-width = min(img.size[0] for img in images)
-height = min(img.size[1] for img in images)
-
 #Crop each image
 cropped = []
 for img in range(len(images)):
-	#Crop out colorbar
-	if img <= 2:
-		coords = (0,0,intRound(width*0.75),height)
-	else:
-		coords = (intRound(width*.075),0,width,height)
+	coords = (0,160,600,565)
 	crop = images[img].crop(coords)
 	cropped.append(crop)
 
-#Make new image with a width of the cropped images
-cropWidth = sum(img.size[0] for img in cropped)
-output = Image.new("RGB",(cropWidth,height))
+#Crop out the scale bar
+timeImage = images[0].crop((650,25,775,375))
 
-#Join images along horizontal axis
-startWidth = 0
-for img in cropped:
-	output.paste(img,(startWidth,0))
-	startWidth += img.size[0]
+#Make a new output image with a white background
+output = Image.new("RGB",(1375,825))
+output.paste((255,255,255))
+
+#Paste everything to new image
+output.paste(cropped[0],(0,5))
+output.paste(cropped[1],(600,0))
+output.paste(cropped[2],(0,405))
+output.paste(cropped[3],(600,405))
+output.paste(timeImage,(1215,300))
+
+#Save the grid figure
 output.save(args.out[0])
 
 #Remove the temp files
