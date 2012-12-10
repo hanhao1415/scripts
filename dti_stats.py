@@ -34,7 +34,7 @@ if dti.get_shape()[0:3] != atlas.get_shape():
 	sys.exit()
 
 #Get image data
-dtiData = np.float64(dti.get_data())
+dtiData = np.ma.masked_equal(np.float64(dti.get_data()),0)
 atlasData = atlas.get_data()
 
 #Find number of ROIs
