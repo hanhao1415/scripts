@@ -1,20 +1,18 @@
 #!/usr/bin/python
 
-#Import system modules
-import sys
-import argparse
-
-#Import external modules
-import numpy as np
-import nibabel as nib
-
 #Parse arguments
+import argparse
 arg_parse = argparse.ArgumentParser(description='Get DTI stats for each JHU ROI')
 #Positional arguments
 arg_parse.add_argument('dti',help='4D image with DTI measure at each timepoint',nargs=1)
 arg_parse.add_argument('atlas',help='Atlas image where each ROI has a different intensity',nargs=1)
 arg_parse.add_argument('stat',help='Name for outputed stats file',nargs=1)
 args = arg_parse.parse_args()
+
+#Import external modules
+import numpy as np
+import nibabel as nib
+import sys
 
 #Load images
 try:
@@ -45,10 +43,9 @@ statMatrix = np.empty((dti.shape[3],rois.shape[0]))
 
 #Fill in stats for each ROI
 for roi in range(rois.shape[0]):
+	print 'Getting values for %i'%(roi)
 	atlasMask = atlasData==rois[roi]
 	statMatrix[:,roi] = np.mean(dtiData[atlasMask,:],axis=0)
 
 #Write out result
 np.savetxt(args.stat[0],statMatrix,fmt='% 2.10f')
-
-
