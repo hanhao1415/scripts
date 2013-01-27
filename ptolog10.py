@@ -4,7 +4,7 @@
 import argparse
 arg_parse = argparse.ArgumentParser(description='Convert p-value image to -log10(p)')
 #Positional arguments
-arg_parse.add_argument('pval',help='ASL image to remove outliers from. Most likely the output from mcflirt',nargs=1)
+arg_parse.add_argument('pval',help='P-value image',nargs=1)
 arg_parse.add_argument('out',help='Root for output image',nargs=1)
 args = arg_parse.parse_args()
 
