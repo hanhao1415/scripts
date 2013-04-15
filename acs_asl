@@ -446,8 +446,8 @@ endif
 #Use FSL to do a nonlinear registration between T1 and MNI152
 if ( ! -e ${aout}_free_to_MNI152_coef.nii.gz || $?force == 1 ) then
 	set cmd = ( $FSL/fnirt --in=${aout}_T1 --aff=${aout}_free_to_MNI152.mat --verbose )
-	set cmd = ( $cmd --config=/home/tblazey/scripts/T1_2_MNI152_2mm_mod.cnf )
-	set cmd = ( $cmd --jout=${aout}_free_to_MNI152_jac --cout=${aout}_free_to_MNI152_coef )
+	set cmd = ( $cmd --config=T1_2_MNI152_2mm --jout=${aout}_free_to_MNI152_jac )
+	set cmd = ( $cmd --cout=${aout}_free_to_MNI152_coef )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
