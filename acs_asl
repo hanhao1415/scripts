@@ -259,7 +259,8 @@ while ( $count <= 2 )
 			set num = `echo $vol:t | sed "s/${root}_asl_vol//g" | sed 's/.nii.gz//g'`
 			set cmd = ( $FSL/applywarp -i $vol -o ${vol:r:r}_transformed -r $vol )
 			set cmd = ( $cmd --premat=${pout}_${count}_mcf.mat/MAT_${num} )
-			set cmd = ( $cmd --postmat=${pout}_${count}_m0_to_tse_${count}.mat --interp=spline )
+			set cmd = ( $cmd --postmat=${pout}_${count}_m0_to_tse_${count}.mat )
+			set cmd = ( $cmd --interp=spline --paddingsize=1 )
 			echo $cmd |& tee -a $log; $cmd |& tee -a $log
 		end
 		
