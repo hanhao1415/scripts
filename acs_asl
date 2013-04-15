@@ -477,10 +477,17 @@ if ( ! -e ${aout}_asl_warped_to_MNI152.nii.gz || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
+#Use FSL to upscale FreeSurfer brain in order to speed up invwarp
+if ( ! -e ${aout}_brain_2mm.nii.gz || $?force == 1 ) then
+	set cmd = ( $FSL/flirt -in ${aout}_brain -ref ${aout}_brain )
+	set cmd = ( $cmd -applyisoxfm 2 -o ${aout}_brain_2mm )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+endif
+
 #Use FSL to invert warp to get a MNI152 to T1 warp
 if ( ! -e ${aout}_MNI152_to_free_coef.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSL/invwarp --ref=${aout}_brain --warp=${aout}_free_to_MNI152_coef )
-	set cmd = ( $cmd --out=${aout}_MNI152_to_free_coef )
+	set cmd = ( $FSL/invwarp --ref=${aout}_brain_2mm --warp=${aout}_free_to_MNI152_coef )
+	set cmd = ( $cmd --out=${aout}_MNI152_to_free_coef --verbose )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -503,13 +510,20 @@ if ( ! -e ${cout}_rawavg_masked_pve_0.nii.gz || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 endif
 
-#Resample partial volume maps into ASL space
 foreach pve ( 0 1 2 )
+	#Resample partial volume maps into ASL space
 	if ( ! -e ${cout}_rawavg_masked_pve_${pve}_to_asl.nii.gz || $?force == 1 ) then
 		set cmd = ( $FSL/applywarp --in=${cout}_rawavg_masked_pve_${pve} --super --interp=spline )
 		set cmd = ( $cmd --ref=${pout}_col_mc_m0_brain --superlevel=4 --premat=${aout}_ntv_to_cnf.mat )
 		set cmd = ( $cmd --postmat=${aout}_free_to_asl.mat --mask=${aout}_brain_cut_mask_to_asl )
 		set cmd = ( $cmd --out=${cout}_rawavg_masked_pve_${pve}_to_asl )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	endif
+
+	#Reorient partial volume for QA viewing
+	if ( ! -e ${cout}_rawavg_masked_pve_${pve}_std.nii.gz || $?force == 1 ) then
+		set cmd = ( $FSL/fslreorient2std ${cout}_rawavg_masked_pve_${pve} )
+		set cmd = ( $cmd ${cout}_rawavg_masked_pve_${pve}_std )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
 end
@@ -596,8 +610,7 @@ if ( ! -e $cdir/${root}_aparc+aseg.nii.gz || $?force == 1) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
-foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_cbf_var \
-			  ${cout}_cbf_var ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg )
+foreach cbf ( ${cout}_pvc${kernel}_cbf_var ${cout}_cbf_var ${cout}_pvc${kernel}_cbf_avg ${cout}_cbf_avg )
 	
 	#Transform cbf to Freesurfer subject volume
 	if ( ! -e ${cbf}_to_free.nii.gz || $?force == 1 ) then
@@ -802,6 +815,37 @@ if ( ! -e ${qout}_asl_to_MNI152_qa.png || $?force == 1 ) then
 	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
 endif
 
+
+#Take QA screenshots of CBF image
+foreach cbf ( cbf_avg pvc${kernel}_cbf_avg ) 
+	if ( ! -e ${qout}_${cbf}_to_MNI152_qa.png || $?force == 1 ) then
+		set cmd = ( python $SCRIPTS/cbf_qa.py ${cout}_${cbf}_warped_to_MNI152_2mm_fwhm_5.nii.gz )
+		set cmd = ( $cmd ${qout}_${cbf}_to_MNI152_qa.png )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	endif
+end
+
+#Use FSL to get T1 segmentation qa images
+if ( ! -e ${qout}_seg_rawavg_qa.png || ! -e ${qout}_seg_0_qa.png || ! -e ${qout}_seg_1_qa.png \
+		|| ! -e ${qout}_seg_2_qa.png || $?force == 1 ) then
+	#Make T1 image
+	set cmd = ( $FSL/slicer ${aout}_rawavg_std -s .8 $sliceropts )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	set cmd = ( $FSL/pngappend $appendopts ${qout}_seg_rawavg_qa.png )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+	#Make an image for each pve map
+	foreach pve ( 0 1 2 )
+		set cmd = ( $FSL/slicer ${cout}_rawavg_masked_pve_${pve}_std -s .8 $sliceropts )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+		set cmd = ( $FSL/pngappend $appendopts ${qout}_seg_${pve}_qa.png )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	end
+	
+	#Cleanup
+	echo rm ${qout}_sl?.png |& tee -a $log; rm ${qout}_sl?.png |& tee -a $log
+endif	
+
 ################
 ###QA Webpage###
 ################
@@ -811,7 +855,8 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "Creating QA webpage at: `pwd`/${qout}_asl_qa_index.html" |& tee -a $log
 	#Create webpages
 	set web_list = ( ${qout}_asl_qa_mc.html ${qout}_asl_qa_bmsk.html \
-		  			 ${qout}_asl_qa_reg.html ${qout}_asl_qa_index.html )
+                 	 ${qout}_asl_qa_reg.html ${qout}_asl_qa_index.html \
+			 ${qout}_asl_qa_seg.html ${qout}_asl_qa_cbf.html )
 	touch $web_list
 	
 	#Setup header
@@ -819,7 +864,9 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "<center><h1>${program}: ${subj} Quick QA</center></h1>" | tee -a $web_list > /dev/null
 	echo "<center><a href=${root}_asl_qa_mc.html>Motion_Correction</a href> - \
 		  <a href=${root}_asl_qa_bmsk.html>Brain Masking</a href> - \
-		  <a href=${root}_asl_qa_reg.html>Registration</a ref></center> " | tee -a $web_list > /dev/null
+		  <a href=${root}_asl_qa_reg.html>Registration</a href> - \
+		  <a href=${root}_asl_qa_seg.html>Segmentation</a href> - \
+		  <a href=${root}_asl_qa_cbf.html>CBF</a href></center> " | tee -a $web_list > /dev/null
 	
 	#Setup Motion Correction
 	echo "<hr><h2>Motion Correction</h2>" >> ${qout}_asl_qa_mc.html
@@ -848,6 +895,32 @@ if ( ! -e ${qout}_asl_qa_index.html || $?force == 1 ) then
 	echo "<p><IMG BORDER=0 SRC=${root}_free_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
 	echo "<p>Nonlinear Registration of ASL to MNI152 T1 2MM" >> ${qout}_asl_qa_reg.html
 	echo "<p><IMG BORDER=0 SRC=${root}_asl_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_reg.html
+
+	#Setup Segmentation
+	echo "<hr><h2>T1 FIRST Segmentation</h2>" >> ${qout}_asl_qa_seg.html
+	echo "Source T1 Weighted Image" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_rawavg_qa.png>" >> ${qout}_asl_qa_seg.html
+	echo "<p>CSF Map" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_0_qa.png>" >> ${qout}_asl_qa_seg.html
+	echo "<p>Gray Map" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_1_qa.png>" >> ${qout}_asl_qa_seg.html
+	echo "<p>White Map" >> ${qout}_asl_qa_seg.html
+	echo "<p><IMG BORDER=0 SRC=${root}_seg_2_qa.png>" >> ${qout}_asl_qa_seg.html
+
+	#Setup CBF
+	echo "<hr><h2>CBF</h2>" >> ${qout}_asl_qa_cbf.html
+	set cbf = `fslstats ${cout}_cbf_avg -k ${cout}_gm_mask -m`
+	set cbf_filt = `cat ${cout}_filtered.txt`
+	set pvc_cbf = `fslstats  ${cout}_pvc${kernel}_cbf_avg -k ${cout}_gm_mask -m`
+	set pvc_cbf_filt = `cat ${cout}_pvc${kernel}_filtered.txt`
+	echo "<p>CBF GM Average = $cbf" >> ${qout}_asl_qa_cbf.html
+	echo "<p>CBF Filtering: $cbf_filt" >> ${qout}_asl_qa_cbf.html
+	echo "<p>CBF Smoothed by ${fwhm}mm and warped to MNI152 2mm" >> ${qout}_asl_qa_cbf.html
+	echo "<p><IMG BORDER=0 SRC=${root}_cbf_avg_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_cbf.html
+	echo "<p>PVC GM Average = $pvc_cbf" >> ${qout}_asl_qa_cbf.html
+	echo "<p>PVC CBF Filtering: $pvc_cbf_filt" >> ${qout}_asl_qa_cbf.html
+	echo "<p>PVC Corrected CBF - Smoothed by ${fwhm}mm and warped to MNI152 2mm" >> ${qout}_asl_qa_cbf.html
+	echo "<p><IMG BORDER=0 SRC=${root}_pvc${kernel}_cbf_avg_to_MNI152_qa.png WIDTH=2000>" >> ${qout}_asl_qa_cbf.html
 endif
 
 echo "#######################################" |& tee -a $log
