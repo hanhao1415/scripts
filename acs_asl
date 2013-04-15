@@ -2,12 +2,16 @@
 # Tyler Blazey, Summer 2011
 
 #Check for dependencies
-if ( ! -e $FSLDIR ) then
-	echo "Set FSLDIR before running script"
+if ( $?FSLDIR == 0 ) then
+	echo "Set FSLDIR before running."
 	exit 1
 endif
-if ( ! -e $FREESURFER_HOME ) then
-	echo "Set FREESURFER_HOME before running script"
+if ( $?FREESURFER_HOME == 0 ) then
+	echo "Set FREESURFER_HOME before running."
+	exit 1
+endif
+if ( $?SCRIPTS == 0 ) then
+	echo "Set SCRIPTS before running."
 	exit 1
 endif
 set FREE = $FREESURFER_HOME/bin; set FSL = $FSLDIR/bin
@@ -100,7 +104,7 @@ while ( $#argv > 0 )
 		case -debug:
 			set debug = 1; breaksw;
 		default:
-			"Option $flag not recognized. See usage"
+			echo "Option $flag not recognized. See usage"
 			exit 1
 	endsw
 end
@@ -177,7 +181,7 @@ endif
 
 #Use python to collate the two runs
 if ( ! -e ${pout}_col.nii.gz || $?force == 1 ) then
-	set cmd = ( collate.py ${pout}_1.nii.gz ${pout}_2.nii.gz ${pout}_col )
+	set cmd = ( python $SCRIPTS/collate.py ${pout}_1.nii.gz ${pout}_2.nii.gz ${pout}_col )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -212,7 +216,7 @@ endif
 
 #Use python to split the resliced tse like the original asl runs
 if ( ! -e ${tout}_1.nii.gz || ! -e ${tout}_2.nii.gz || $?force == 1 ) then	
-	set cmd = ( split.py ${tout}_to_asl_col_m0.nii.gz ${tout} )
+	set cmd = ( python $SCRIPTS/split.py ${tout}_to_asl_col_m0.nii.gz ${tout} )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
@@ -273,7 +277,7 @@ end
 
 #Use Python to collate the motion corrected images
 if ( ! -e ${pout}_col_mc.nii.gz || $?force == 1 ) then
-	set cmd = ( collate.py ${pout}_1_mc.nii.gz )
+	set cmd = ( python $SCRIPTS/collate.py ${pout}_1_mc.nii.gz )
 	set cmd = ( $cmd ${pout}_2_mc.nii.gz ${pout}_col_mc )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
@@ -568,7 +572,7 @@ endif
 
 #Calculate uncorrected cbf	
 if ( ! -e ${cout}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( cbf_calc.py ${cout}_perf.nii.gz ${pout}_col_mc_m0.nii.gz )
+	set cmd = ( python $SCRIPTS/cbf_calc.py ${cout}_perf.nii.gz ${pout}_col_mc_m0.nii.gz )
 	set cmd = ( $cmd ${aout}_brain_cut_mask_to_asl.nii.gz ${cout} $out4d $unfilt )
 	set cmd = ( $cmd -mthresh $mthresh -sthresh $sthresh -col )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log	
@@ -576,7 +580,7 @@ endif
 
 #Run a regression based partial volume correction
 if ( ! -e ${cout}_pvc${kernel}_mgm.nii.gz || $?force == 1 ) then
-	set cmd = ( lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_col_mc_m0.nii.gz )
+	set cmd = ( python $SCRIPTS/lin_pv_pasl.py ${cout}_perf.nii.gz ${pout}_col_mc_m0.nii.gz )
 	set cmd = ( $cmd ${aout}_brain_cut_mask_to_asl.nii.gz ${cout}_rawavg_masked_pve_0_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_rawavg_masked_pve_1_to_asl.nii.gz  ${cout}_rawavg_masked_pve_2_to_asl.nii.gz )
 	set cmd = ( $cmd ${cout}_pvc${kernel} $nocsf -kernel $kernel)
@@ -585,10 +589,17 @@ endif
 
 #Calculate corrected cbf
 if ( ! -e ${cout}_pvc${kernel}_cbf_avg.nii.gz ||  $?force == 1 ) then	
-	set cmd = ( cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz ${cout}_pvc${kernel}_mgm.nii.gz )
+	set cmd = ( python $SCRIPTS/cbf_calc.py ${cout}_pvc${kernel}_dgm.nii.gz ${cout}_pvc${kernel}_mgm.nii.gz )
 	set cmd = ( $cmd ${aout}_brain_cut_mask_to_asl.nii.gz ${cout}_pvc${kernel} )
 	set cmd = ( $cmd $unfilt -mthresh $mthresh -sthresh $sthresh -col )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log		
+endif
+
+#Get Nifti version of aparc+aseg
+if ( ! -e $cdir/${root}_aparc+aseg.nii.gz || $?force == 1) then
+	set cmd = ( $FREE/mri_convert $SUBJECTS_DIR/$subj/mri/aparc+aseg.mgz )
+	set cmd = ( $cmd $cdir/${root}_aparc+aseg.nii.gz )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
 foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_cbf_var \
@@ -618,37 +629,31 @@ foreach cbf ( ${cout}_pvc${kernel}_cbf_std ${cout}_cbf_std ${cout}_pvc${kernel}_
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 	
-	#Get reasonable output mask
+	#Get defined asl mask
 	if (( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
-			&& ( ! -e ${cbf}_outlier_mask.nii.gz || $?force == 1)) then
-		
-		#Use Freesurfer to get a defined asl mask
+			&& ( ! -e ${cbf}_defined_mask.nii.gz || $?force == 1)) then	
 		set cmd = ( $FREE/mri_binarize --i ${cbf}_to_free.nii.gz --match 0 --inv )
 		set cmd = ( $cmd --o ${cbf}_defined_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log
-		
-		#Use Freesurfer to get a filtering mask. Erode a little bit to get rid of edges
-		set cmd = ( $FREE/mri_binarize --i ${cbf}_defined_mask.nii.gz --match 1 )
-		set cmd = ( $cmd --erode 1 --zero-edges --o ${cbf}_to_free_filt_mask.nii.gz )
-		echo $cmd |& tee -a $log; $cmd |& tee -a $log
-		
-		#Use FSL to get 1st and 99th percentile
-		set min = `$FSL/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -p 1`
-		set max = `$FSL/fslstats ${cbf}_to_free -k ${cbf}_to_free_filt_mask -p 99`
-		
-		#Use FreeSurfer to get a outlier mask
-		set cmd = ( $FREE/mri_binarize --i ${cbf}_to_free.nii.gz --min $min )
-		set cmd = ( $cmd --max $max --mask ${cbf}_defined_mask.nii.gz --o ${cbf}_outlier_mask.nii.gz )
-		echo $cmd |& tee -a $log; $cmd |& tee -a $log
 	endif
 										 		
-	#Get stats from Freesurfer segmentations
+	#Get weighted stats from Freesurfer segmentations
 	if ( ( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
 			&& ( ! -e ${cbf}_stats.txt || $?force == 1 )) then
-		set cmd = ( $FREE/mri_segstats --i ${cbf}_to_free.nii.gz )
-		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt --sum ${cbf}_stats.txt )
+		set var = `echo $cbf | sed "s/avg/var/g"`
+		set cmd = ( python $SCRIPTS/weight_mean.py ${cbf}_to_free.nii.gz ${var}_to_free.nii.gz )
+		set cmd = ( $cmd $cdir/${root}_aparc+aseg.nii.gz ${cbf}_defined_mask.nii.gz )
+		set cmd = ( $cmd $SCRIPTS/asl_roi_list.txt ${cbf}_stats.txt )
+		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
+	endif
+	
+	#Get unweighted stats from FreeSurfer segmentations
+	if ( ( $cbf == ${cout}_pvc${kernel}_cbf_avg || $cbf == ${cout}_cbf_avg ) \
+			&& ( ! -e ${cbf}_stats_unweighted.txt || $?force == 1 )) then
+		set cmd = ( $FREE/mri_segstats --i ${cbf}_to_free.nii.gz --sum ${cbf}_stats_unweighted.txt )
+		set cmd = ( $cmd --ctab $FREESURFER_HOME/FreeSurferColorLUT.txt )
 		set cmd = ( $cmd --seg ${SUBJECTS_DIR}/${subj}/mri/aparc+aseg.mgz )
-		set cmd = ( $cmd --mask ${cbf}_outlier_mask.nii.gz )
+		set cmd = ( $cmd --mask ${cbf}_defined_mask.nii.gz )
 		echo $cmd |& tee -a $log; $cmd |& tee -a $log	
 	endif
 		
