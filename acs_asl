@@ -476,17 +476,10 @@ if ( ! -e ${aout}_asl_warped_to_MNI152.nii.gz || $?force == 1 ) then
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
-#Use FSL to upscale FreeSurfer brain in order to speed up invwarp
-if ( ! -e ${aout}_brain_2mm.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSL/flirt -in ${aout}_brain -ref ${aout}_brain )
-	set cmd = ( $cmd -applyisoxfm 2 -o ${aout}_brain_2mm )
-	echo $cmd |& tee -a $log; $cmd |& tee -a $log
-endif
-
 #Use FSL to invert warp to get a MNI152 to T1 warp
 if ( ! -e ${aout}_MNI152_to_free_coef.nii.gz || $?force == 1 ) then
-	set cmd = ( $FSL/invwarp --ref=${aout}_brain_2mm --warp=${aout}_free_to_MNI152_coef )
-	set cmd = ( $cmd --out=${aout}_MNI152_to_free_coef --force )
+	set cmd = ( $FSL/invwarp --ref=${aout}_brain --warp=${aout}_free_to_MNI152_coef )
+	set cmd = ( $cmd --out=${aout}_MNI152_to_free_coef )
 	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 endif
 
