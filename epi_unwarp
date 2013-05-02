@@ -41,6 +41,7 @@ if ( $#argv == 0 ) then
 	echo "	-epibet <epibet> 	BET fractional intensity threshold for EPI. Default is .2."
 	echo "	-magbet <magbet> 	BET fractional intensity threshold for magnitude image. Default is .3."
 	echo "	-cost <cost>		Cost function for -boldmc. Default is normcorr."
+	echo "	-dof <dof>		Number of degrees of freedom for registration between epi and magnitude."
 	echo "	-dtimc 			Use FSL to motion correct dti input. Will only resample once."
 	echo "	-boldmc 		Use FSL to motion correct bold input. Will only resample once."
 	echo "	-meanmap 		Turn off conversion to radians/sec and phase unwrapping."
@@ -48,6 +49,7 @@ if ( $#argv == 0 ) then
 	echo " 	-nomask 		Do not use brain mask when applying to 4D series."
 	echo "	-no4d			Do not apply to whole 4D series. Overridden by -bold or -dtimc."
 	echo " 	-dil 			Dilate magnitude brain mask before applying shift map to EPI."
+	echo "	-nosig			Do not use signal loss weighting."
 	echo "	-debug			Turn on set echo."
 	echo ""
 	echo "Tips:"
@@ -116,7 +118,9 @@ while ($#argv > 0)
 		case -magbet:
 			set magbet = $argv[1]; shift; breaksw
 		case -cost:
-			set cost = $argv[1]; shift; breaksw		
+			set cost = $argv[1]; shift; breaksw
+		case -dof:
+			set dof = $argv[1]; shift; breaksw;		
 		case -dtimc:
 			set dtimc = 1; breaksw
 		case -boldmc:
@@ -131,6 +135,8 @@ while ($#argv > 0)
 			set no4d = 1; breaksw
 		case -dil:
 			set dil = 1; breaksw
+		case -nosig:
+			set nosig = 1; breaksw
 		case -debug:
 			set echo; breaksw
 		default:
@@ -161,6 +167,8 @@ if ( $?dir == 0 ) set dir = "y-"
 if ( $?epibet == 0 ) set epibet = .2
 if ( $?magbet == 0 ) set magbet = .3
 if ( $?cost == 0 ) set cost = "normcorr"
+if ( $?nosig == 0 ) set nosig = 0
+if ( $?dof == 0 ) set dof = 6
 
 #Check to make sure -reg is set correctly
 set reg_options = ( "smooth" "median" "none" "despike" ); echo $reg_options | grep -qw $reg;
@@ -330,62 +338,73 @@ set median = `$FSL/fslstats ${pout} -k ${out}mag_brain_mask -P 50`
 set cmd = ( $FSL/fslmaths ${pout} -sub $median ${pout}_norm )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log; set pout = ${pout}_norm
 
-#Estimate signal loss from fieldmap. Range goes from 0 (no signal) to 1 (full signal)
-set cmd = ( $FSL/sigloss -i ${pout} --te=${te} -m ${out}mag_brain_mask -s ${out}signal_loss )
-echo $cmd |& tee -a $log; $cmd |& tee -a $log
-
-#Multiply mag brain by signal loss image. Will result in a mag brain with areas of signal loss.
-set cmd = ( $FSL/fslmaths ${out}signal_loss -mul ${out}mag_brain ${out}mag_brain_signal_lossed )
-set cmd = ( $cmd -odt float ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
-
 #####################################
 #FUGUE, Registration, Transformation#
 #####################################
 
-#Run fugue on the signal lossed magnitude image. Will distort it according to the field map. 
-set cmd = ( $FSL/fugue -i ${out}mag_brain_signal_lossed --loadfmap=${pout} )
-set cmd = ( $cmd --mask=${out}mag_brain_mask -w ${out}mag_brain_signal_lossed_distorted )
-set cmd = ( $cmd --nokspace --unwarpdir=$dir --dwell=$dwell )
-echo $cmd |& tee -a $log; $cmd |& tee -a $log
+if ( $nosig == 0 ) then
+	
+	set xfm = ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted.mat
+	set inv_xfm = ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat
+	
+	#Estimate signal loss from fieldmap. Range goes from 0 (no signal) to 1 (full signal)
+	set cmd = ( $FSL/sigloss -i ${pout} --te=${te} -m ${out}mag_brain_mask -s ${out}signal_loss )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
-#Do the same thing for the signal_loss fmap image.
-set cmd = ( $FSL/fugue -i ${out}signal_loss --loadfmap=${pout} --dwell=$dwell )
-set cmd = ( $cmd -w ${out}signal_loss_distorted --nokspace --unwarpdir=$dir )
-set cmd = ( $cmd --mask=${out}mag_brain_mask ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	#Multiply mag brain by signal loss image. Will result in a mag brain with areas of signal loss.
+	set cmd = ( $FSL/fslmaths ${out}signal_loss -mul ${out}mag_brain ${out}mag_brain_signal_lossed )
+	set cmd = ( $cmd -odt float ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
-#Threshhold the distorted signal loss brain according to user chosen signal loss threshhold
-set cmd = ( $FSL/fslmaths ${out}signal_loss_distorted -thr $thresh )
-set cmd = ( $cmd ${out}signal_loss_distorted ); echo $cmd |& tee -a $log; $cmd |& tee -a $log 
+	#Run fugue on the signal lossed magnitude image. Will distort it according to the field map. 
+	set cmd = ( $FSL/fugue -i ${out}mag_brain_signal_lossed --loadfmap=${pout} )
+	set cmd = ( $cmd --mask=${out}mag_brain_mask -w ${out}mag_brain_signal_lossed_distorted )
+	set cmd = ( $cmd --nokspace --unwarpdir=$dir --dwell=$dwell )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log
 
-#Register the distorted magnitude to the distorted functional. 
-#Use the threshholded signal loss brain as weighting (areas with 0 will be ignored)
-set cmd = ( $FSL/flirt -ref ${out}mag_brain_signal_lossed_distorted -in ${out}epi_${ref}_brain )
-set cmd = ( $cmd -omat ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted.mat )
-set cmd = ( $cmd -out ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted )
-set cmd = ( $cmd -refweight ${out}signal_loss_distorted -dof 6 )
-echo $cmd |& tee -a $log; $cmd |& tee -a $log 
+	#Do the same thing for the signal_loss fmap image.
+	set cmd = ( $FSL/fugue -i ${out}signal_loss --loadfmap=${pout} --dwell=$dwell )
+	set cmd = ( $cmd -w ${out}signal_loss_distorted --nokspace --unwarpdir=$dir )
+	set cmd = ( $cmd --mask=${out}mag_brain_mask ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
+
+	#Threshhold the distorted signal loss brain according to user chosen signal loss threshhold
+	set cmd = ( $FSL/fslmaths ${out}signal_loss_distorted -thr $thresh )
+	set cmd = ( $cmd ${out}signal_loss_distorted ); echo $cmd |& tee -a $log; $cmd |& tee -a $log 
+
+	#Register the distorted magnitude to the distorted functional. 
+	#Use the threshholded signal loss brain as weighting (areas with 0 will be ignored)
+	set cmd = ( $FSL/flirt -ref ${out}mag_brain_signal_lossed_distorted -in ${out}epi_${ref}_brain )
+	set cmd = ( $cmd -omat $xfm -refweight ${out}signal_loss_distorted -dof $dof )
+	set cmd = ( $cmd -out ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted )
+	echo $cmd |& tee -a $log; $cmd |& tee -a $log 
+
+else
+	
+	set xfm = ${out}epi_${ref}_brain_to_${outroot}mag_brain.mat
+	set inv_xfm = ${out}mag_brain_to_${outroot}epi_${ref}_brain.mat
+	
+	#Register magnitude to distorted functional without any signal loss stuff
+	set cmd = ( $FSL/flirt -ref ${out}mag_brain -in ${out}epi_${ref}_brain )
+	set cmd = ( $cmd -omat $xfm -dof $dof ); echo $cmd |& tee -a $log; $cmd |& tee -a $log
+	
+endif
 
 #Invert transformation to get mag->epi
-set cmd = ( $FSL/convert_xfm -omat ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
-set cmd = ( $cmd -inverse ${out}epi_${ref}_brain_to_${outroot}mag_brain_signal_lossed_distorted.mat )
+set cmd = ( $FSL/convert_xfm -omat $inv_xfm -inverse $xfm )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 
 #Apply transformation to original magnitude image for QA purposes
 set cmd = ( $FSL/flirt -in ${out}mag_brain -ref ${out}epi_${ref}_brain -applyxfm -init )
-set cmd = ( $cmd ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
-set cmd = ( $cmd -out ${out}mag_brain_to_${outroot}epi_${ref}_brain )
+set cmd = ( $cmd $inv_xfm -out ${out}mag_brain_to_${outroot}epi_${ref}_brain )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 
 #Apply transformation to the field map
 set cmd = ( $FSL/flirt -in ${pout} -ref ${out}epi_${ref}_brain -applyxfm )
-set cmd = ( $cmd -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
-set cmd = ( $cmd -out ${pout}_to_${outroot}epi_${ref}_brain )
+set cmd = ( $cmd -init $inv_xfm -out ${pout}_to_${outroot}epi_${ref}_brain )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log ; set pout = ${pout}_to_${outroot}epi_${ref}_brain
 
 #Apply transform to mask
-set cmd = ( $FSL/flirt -in ${out}mag_brain_mask -ref ${out}epi_${ref}_brain )
-set cmd = ( $cmd -init ${out}mag_brain_signal_lossed_distorted_to_${outroot}epi_${ref}_brain.mat )
-set cmd = ( $cmd -applyxfm -out ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
+set cmd = ( $FSL/flirt -in ${out}mag_brain_mask -ref ${out}epi_${ref}_brain -applyxfm )
+set cmd = ( $cmd -init $inv_xfm -out ${out}mag_brain_mask_to_${outroot}epi_${ref}_brain )
 echo $cmd |& tee -a $log; $cmd |& tee -a $log 
 
 #Rebinarize mask

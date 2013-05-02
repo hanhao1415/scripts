@@ -6,6 +6,7 @@ arg_parse = argparse.ArgumentParser(description='Combine Medial and Lateral Movi
 #Positional arguments
 arg_parse.add_argument('med',help='Directory containing medial snapshots',nargs=1)
 arg_parse.add_argument('lat',help='Directory containing lateral snapshots',nargs=1)
+arg_parse.add_argument('scale',help='Custom colorbar image.',nargs=1)
 arg_parse.add_argument('out',help='Root for outputed images',nargs=1)
 arg_parse.add_argument('-pib',action='store_const',const=1,help='Crop using PiB presets')
 args = arg_parse.parse_args()
@@ -15,7 +16,6 @@ import Image, os, sys
 
 #Get a list of all the images in the directory
 medImages = os.listdir(args.med[0])
-print medImages
 latImages = os.listdir(args.lat[0])
 
 #Remove the DS_STORE files 
@@ -24,7 +24,13 @@ try:
 	latImages.remove('.DS_Store')
 except ValueError:
 	print '.DS_Store files are not present in both lists. This should be ok...'
-
+	
+#Load in the colorbar image
+try:
+	scaleImage = Image.open(args.scale[0])
+except IOError:
+	print 'Cannot load %s. Exiting...'%(args.scale[0])
+	
 for med,lat in zip(sorted(medImages),sorted(latImages)):
 	
 	outImage = "%s_%s.jpeg"%(args.out[0],os.path.splitext(med)[0])
@@ -44,10 +50,8 @@ for med,lat in zip(sorted(medImages),sorted(latImages)):
 	medImage = images[0].crop((40,160,610,575))
 	latImage = images[1].crop((40,160,610,575))
 	if ( args.pib == 1 ):
-		scaleImage = images[0].crop((650,50,800,550))
 		timeImage = images[0].crop((90,600,715,675))
 	else:
-		scaleImage = images[0].crop((650,0,800,750))
 		timeImage = images[0].crop((40,600,650,675))
 
 	#Paste croped images to combined image
