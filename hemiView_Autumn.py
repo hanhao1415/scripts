@@ -33,13 +33,7 @@ def setOverlay(overlay):
 	#Make a colormap with inverted data
 	invertData = np.ones((255,4))
 	invertData[:,0:3] = autumnData[:,0:3] * -1 + 1
-
-	#Use inverted data to make custom colormap. Add a zero compartment for between -0.1 and positive 0.1 
-	#customColArray = col.colorConverter.to_rgba_array(np.vstack((invertData,np.zeros((65,4)),autumnData)))
-
-	#Interpolate the array so that it is 256,4. Also scale it so that it meets Mayavi expectations.
-	#intColArray = int.zoom(customColArray,[.45,1],order=0) * 255
-
+	
 	#Change positive colorbar
 	if ( sign == 'abs' or sign == 'pos' ):
 		overlay.pos_bar.scalar_bar_representation.position2 = (0.15,0.45)
