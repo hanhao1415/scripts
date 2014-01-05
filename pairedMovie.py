@@ -15,7 +15,6 @@ import Image, os, sys
 
 #Get a list of all the images in the directory
 medImages = os.listdir(args.med[0])
-print medImages
 latImages = os.listdir(args.lat[0])
 
 #Remove the DS_STORE files 
